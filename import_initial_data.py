@@ -9,14 +9,14 @@ DATABASE_URL = _raw_url.replace("postgres://", "postgresql://", 1) if _raw_url.s
 
 # (name, saldo, badges)
 INITIAL_DATA = [
-    ("@pemudakhongguan", 11_615_000, []),
-    ("@camelliabr",      10_255_000, []),
-    ("@lvwonhan",         4_505_000, []),
-    ("@badtinnitus",      4_425_000, ["🪽"]),
-    ("@cepetanlulus",     4_295_000, []),
-    ("@Lailight",         2_500_000, []),
-    ("@samvwel",          2_170_000, ["🪽"]),
-    ("@linkdivio",        1_930_000, []),
+    ("@pemudakhongguan", 12_615_000, []),
+    ("@camelliabr",      11_255_000, []),
+    ("@lvwonhan",         5_505_000, []),
+    ("@badtinnitus",      5_425_000, ["🪽"]),
+    ("@cepetanlulus",     5_295_000, []),
+    ("@Lailight",         2_800_000, []),
+    ("@samvwel",          2_270_000, ["🪽"]),
+    ("@linkdivio",        2_030_000, []),
     ("@llaolyd",             95_000, []),
     ("@furabantartika",      50_000, []),
     ("@Vxrtle",              40_000, []),
