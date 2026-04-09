@@ -2,25 +2,26 @@ import asyncio
 import asyncpg
 import os
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
-if not DATABASE_URL:
+_raw_url = os.environ.get("DATABASE_URL", "")
+if not _raw_url:
     raise ValueError("DATABASE_URL tidak diset. Pastikan environment variable sudah diisi.")
+DATABASE_URL = _raw_url.replace("postgres://", "postgresql://", 1) if _raw_url.startswith("postgres://") else _raw_url
 
+# (name, saldo, badges)
 INITIAL_DATA = [
     ("@pemudakhongguan", 11_615_000, []),
-    ("@camelliabr", 10_255_000, []),
-    ("@lvwonhan", 4_505_000, []),
-    ("@badtinnitus", 4_425_000, ["🪽"]),
-    ("@cepetanlulus", 4_295_000, []),
-    ("@Lailight", 2_500_000, []),
-    ("@samvwel", 2_170_000, ["🪽"]),
-    ("@linkdivio", 1_930_000, []),
-    ("@llaolyd", 95_000, []),
-    ("@furabantartika", 50_000, []),
-    ("@Vxrtle", 40_000, []),
-    ("@Emyuihiy", 25_000, []),
-    ("Saya Eriol", 0, []),
-    ("@tiramisuacaii", -120_000, []),
+    ("@camelliabr",      10_255_000, []),
+    ("@lvwonhan",         4_505_000, []),
+    ("@badtinnitus",      4_425_000, ["🪽"]),
+    ("@cepetanlulus",     4_295_000, []),
+    ("@Lailight",         2_500_000, []),
+    ("@samvwel",          2_170_000, ["🪽"]),
+    ("@linkdivio",        1_930_000, []),
+    ("@llaolyd",             95_000, []),
+    ("@furabantartika",      50_000, []),
+    ("@Vxrtle",              40_000, []),
+    ("@Emyuihiy",            25_000, []),
+    ("@tiramisuacaii",     -120_000, []),
 ]
 
 async def create_tables(conn):
@@ -52,25 +53,29 @@ async def import_data():
     try:
         await create_tables(conn)
 
-        for username, saldo, badges in INITIAL_DATA:
-            user_id = 0
-            name = username
+        for i, (name, saldo, badges) in enumerate(INITIAL_DATA, start=1):
+            placeholder_id = -i
 
             await conn.execute("""
                 INSERT INTO wallet (user_id, name, saldo)
                 VALUES ($1, $2, $3)
-                ON CONFLICT (user_id) DO NOTHING
-            """, user_id, name, saldo)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    saldo = EXCLUDED.saldo
+            """, placeholder_id, name, saldo)
 
             if badges:
                 await conn.execute("""
                     INSERT INTO user_badges (user_id, badges)
                     VALUES ($1, $2)
-                    ON CONFLICT (user_id) DO NOTHING
-                """, user_id, badges)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        badges = EXCLUDED.badges
+                """, placeholder_id, badges)
 
-        print("✅ Data awal berhasil diimpor!")
-        print("Catatan: user_id diset 0. Saat user asli muncul, bot akan otomatis memperbarui user_id.")
+            print(f"  ✅ {name} — saldo: {saldo:,}, badges: {badges if badges else '-'}")
+
+        print("\n✅ Semua data berhasil diimpor!")
+        print("Saat pemain pertama kali pakai bot, akun mereka otomatis terhubung ke data ini.")
     finally:
         await conn.close()
 
