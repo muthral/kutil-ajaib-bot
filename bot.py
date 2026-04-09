@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 
@@ -9,6 +10,7 @@ from game_slot import slot, kekayaan
 from game_shop import shop, beli, tukar
 from admin import setsaldo, addsaldo, setscore, addscore
 from db import close_pool
+from import_initial_data import import_data
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -20,6 +22,9 @@ TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 if __name__ == "__main__":
     if not TOKEN:
         raise ValueError("TOKEN belum diset")
+
+    print("Setting up database...")
+    asyncio.run(import_data())
 
     app = ApplicationBuilder().token(TOKEN).build()
 
