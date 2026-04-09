@@ -62,7 +62,7 @@ async def slot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def kekayaan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rows = await db_get_all_wallets()
-    wallets = [r for r in rows if r["user_id"] != 0]
+    wallets = [r for r in rows if r["user_id"] > 0]
 
     if not wallets:
         await update.message.reply_text("belum ada yang main slot!")
