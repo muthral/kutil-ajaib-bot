@@ -9,18 +9,19 @@ DATABASE_URL = _raw_url.replace("postgres://", "postgresql://", 1) if _raw_url.s
 
 # (name, saldo, badges)
 INITIAL_DATA = [
-    ("@pemudakhongguan", 12_615_000, []),
-    ("@camelliabr",      11_255_000, []),
-    ("@lvwonhan",         5_505_000, []),
-    ("@badtinnitus",      5_425_000, ["🪽"]),
-    ("@cepetanlulus",     5_295_000, []),
-    ("@Lailight",         2_800_000, []),
-    ("@samvwel",          2_270_000, ["🪽"]),
-    ("@linkdivio",        2_030_000, []),
+    ("@pemudakhongguan", 11_615_000, []),
+    ("@camelliabr",      10_255_000, []),
+    ("@lvwonhan",         4_505_000, []),
+    ("@badtinnitus",      4_425_000, ["🪽"]),
+    ("@cepetanlulus",     4_295_000, []),
+    ("@Lailight",         2_500_000, []),
+    ("@samvwel",          2_170_000, ["🪽"]),
+    ("@linkdivio",        1_930_000, []),
     ("@llaolyd",             95_000, []),
     ("@furabantartika",      50_000, []),
     ("@Vxrtle",              40_000, []),
     ("@Emyuihiy",            25_000, []),
+    ("Saya Eriol",                0, []),
     ("@tiramisuacaii",     -120_000, []),
 ]
 
@@ -59,17 +60,14 @@ async def import_data():
             await conn.execute("""
                 INSERT INTO wallet (user_id, name, saldo)
                 VALUES ($1, $2, $3)
-                ON CONFLICT (user_id) DO UPDATE SET
-                    name = EXCLUDED.name,
-                    saldo = EXCLUDED.saldo
+                ON CONFLICT (user_id) DO NOTHING
             """, placeholder_id, name, saldo)
 
             if badges:
                 await conn.execute("""
                     INSERT INTO user_badges (user_id, badges)
                     VALUES ($1, $2)
-                    ON CONFLICT (user_id) DO UPDATE SET
-                        badges = EXCLUDED.badges
+                    ON CONFLICT (user_id) DO NOTHING
                 """, placeholder_id, badges)
 
             print(f"  ✅ {name} — saldo: {saldo:,}, badges: {badges if badges else '-'}")
