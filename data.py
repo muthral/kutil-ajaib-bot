@@ -7,7 +7,7 @@ from db import (
     db_get_wallet, db_set_wallet, db_get_all_wallets,
     db_get_badges, db_set_badges,
     db_get_scores, db_set_score,
-    db_get_wallet_by_name,
+    db_get_wallet_by_name, db_delete_wallet,
 )
 
 # =====================
@@ -106,14 +106,14 @@ async def init_wallet(user):
     name = get_raw_name(user)
     data = await db_get_wallet(uid)
     if data is None:
-        # Cek placeholder (user_id=0) dengan nama yang sama
         placeholder = await db_get_wallet_by_name(name)
         if placeholder:
+            placeholder_uid = placeholder["user_id"]
             await db_set_wallet(uid, name, placeholder["saldo"])
-            badges = await db_get_badges(0)
+            badges = await db_get_badges(placeholder_uid)
             if badges:
                 await db_set_badges(uid, badges)
-                await db_set_badges(0, [])
+            await db_delete_wallet(placeholder_uid)
         else:
             await db_set_wallet(uid, name, SLOT_INITIAL)
     else:
@@ -149,7 +149,7 @@ async def get_wallet_dict():
     rows = await db_get_all_wallets()
     result = {}
     for r in rows:
-        if r["user_id"] != 0:
+        if r["user_id"] > 0:
             result[r["user_id"]] = {"name": r["name"], "saldo": r["saldo"]}
     return result
 
