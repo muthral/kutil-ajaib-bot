@@ -3,7 +3,8 @@ import asyncio
 import asyncpg
 from typing import Optional, Dict, Any, List
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
+_raw_url = os.environ.get("DATABASE_URL", "")
+DATABASE_URL = _raw_url.replace("postgres://", "postgresql://", 1) if _raw_url.startswith("postgres://") else _raw_url
 
 _pool: Optional[asyncpg.Pool] = None
 
@@ -35,12 +36,17 @@ async def db_get_wallet_by_name(name: str) -> Optional[Dict[str, Any]]:
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT user_id, name, saldo FROM wallet WHERE name = $1 AND user_id = 0",
+            "SELECT user_id, name, saldo FROM wallet WHERE name = $1 AND user_id <= 0",
             name
         )
         if row:
             return {"user_id": row["user_id"], "name": row["name"], "saldo": row["saldo"]}
         return None
+
+async def db_delete_wallet(user_id: int):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM wallet WHERE user_id = $1", user_id)
 
 async def db_set_wallet(user_id: int, name: str, saldo: int):
     pool = await get_pool()
