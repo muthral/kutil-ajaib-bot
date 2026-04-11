@@ -3,11 +3,15 @@ import asyncio
 import logging
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 
-from commands import start, help_cmd, apa, hitung, tagrandom, tag7, skor, track_member
-from game_tebak import angka, stoptebak, angkachaos, stopchaos, angkaduel, joinduel, startduel, stopduel
+from commands import start, help_cmd, apa, hitung, tagrandom, tag7, tag2, jodoh, skor, track_member
+from game_tebak import (
+    angka, stoptebak, angkachaos, stopchaos,
+    angkaduel, joinduel, startduel, stopduel,
+    angkataruhan, jointaruhan, starttaruhan, stoptaruhan
+)
 from game_spy import spy, join, startspy, vote, pemain, stopspy, skip
 from game_slot import slot, kekayaan
-from game_shop import shop, beli, tukar
+from game_shop import shop, beli, tukar, transfer
 from admin import setsaldo, addsaldo, setscore, addscore
 from db import close_pool
 from import_initial_data import import_data
@@ -26,7 +30,7 @@ if __name__ == "__main__":
     print("Setting up database...")
     asyncio.run(import_data())
 
-    app = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).concurrent_updates(True).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
@@ -35,6 +39,8 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("hitung", hitung))
     app.add_handler(CommandHandler("tagrandom", tagrandom))
     app.add_handler(CommandHandler("tag7", tag7))
+    app.add_handler(CommandHandler("tag2", tag2))
+    app.add_handler(CommandHandler("jodoh", jodoh))
     app.add_handler(CommandHandler("skor", skor))
     app.add_handler(CommandHandler("kekayaan", kekayaan))
 
@@ -47,10 +53,16 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("startduel", startduel))
     app.add_handler(CommandHandler("stopduel", stopduel))
 
+    app.add_handler(CommandHandler("angkataruhan", angkataruhan))
+    app.add_handler(CommandHandler("jointaruhan", jointaruhan))
+    app.add_handler(CommandHandler("starttaruhan", starttaruhan))
+    app.add_handler(CommandHandler("stoptaruhan", stoptaruhan))
+
     app.add_handler(CommandHandler("slot", slot))
     app.add_handler(CommandHandler("shop", shop))
     app.add_handler(CommandHandler("beli", beli))
     app.add_handler(CommandHandler("tukar", tukar))
+    app.add_handler(CommandHandler("transfer", transfer))
 
     app.add_handler(CommandHandler("spy", spy))
     app.add_handler(CommandHandler("join", join))
@@ -60,7 +72,6 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("stopspy", stopspy))
     app.add_handler(CommandHandler("skip", skip))
 
-    # Admin commands
     app.add_handler(CommandHandler("setsaldo", setsaldo))
     app.add_handler(CommandHandler("addsaldo", addsaldo))
     app.add_handler(CommandHandler("setscore", setscore))
