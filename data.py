@@ -28,6 +28,8 @@ duel_sessions = {}
 duel_dm_pending = {}
 spy_sessions = {}
 spy_guess_pending = {}
+taruhan_sessions = {}
+taruhan_dm_pending = {}
 
 MAX_RECENT = 300
 MAX_BADGES = 10
