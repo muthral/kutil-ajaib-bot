@@ -43,6 +43,17 @@ async def db_get_wallet_by_name(name: str) -> Optional[Dict[str, Any]]:
             return {"user_id": row["user_id"], "name": row["name"], "saldo": row["saldo"]}
         return None
 
+async def db_get_wallet_by_any_name(name: str) -> Optional[Dict[str, Any]]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT user_id, name, saldo FROM wallet WHERE LOWER(name) = LOWER($1) LIMIT 1",
+            name
+        )
+        if row:
+            return {"user_id": row["user_id"], "name": row["name"], "saldo": row["saldo"]}
+        return None
+
 async def db_delete_wallet(user_id: int):
     pool = await get_pool()
     async with pool.acquire() as conn:
