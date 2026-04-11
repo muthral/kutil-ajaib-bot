@@ -54,6 +54,13 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/shop — lihat daftar badge & harga\n"
         "/beli [emoji] — beli badge untuk username-mu\n"
         "/tukar [jumlah] — tukar skor menjadi saldo\n\n"
+        "💸 <b>TRANSFER</b>\n"
+        "/transfer @username jumlah\n\n"
+        "🎰 <b>ANGKA TARUHAN</b>\n"
+        "/angkataruhan — mulai game taruhan\n"
+        "/jointaruhan — join game taruhan\n"
+        "/starttaruhan — mulai game taruhan\n"
+        "/stoptaruhan — hentikan game taruhan\n\n"
         "🎮 <b>GAME SPY</b>\n"
         "/spy\n"
         "/join\n"
@@ -61,7 +68,10 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/vote\n"
         "/pemain\n"
         "/stopspy\n"
-        "/skip",
+        "/skip\n\n"
+        "🏷 <b>LAINNYA</b>\n"
+        "/tag2 — tag 2 member random\n"
+        "/jodoh — pasangkan 2 member random",
         parse_mode="HTML"
     )
 
@@ -150,6 +160,57 @@ async def tag7(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"🎯 {', '.join(mentions)}", parse_mode="HTML")
 
+async def tag2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.message.chat_id
+    members = chat_members.get(chat_id, {})
+
+    if len(members) < 2:
+        await update.message.reply_text("belum ada cukup member terdeteksi!")
+        return
+
+    terpilih = random.sample(list(members.values()), 2)
+    mentions = []
+    for user in terpilih:
+        if user.username:
+            mentions.append(f"@{user.username}")
+        else:
+            mentions.append(f'<a href="tg://user?id={user.id}">{user.first_name}</a>')
+
+    await update.message.reply_text(f"🎯 {mentions[0]}, {mentions[1]}", parse_mode="HTML")
+
+pesan_jodoh = [
+    "semoga samawa ya!",
+    "jodoh banget, gak diragukan.",
+    "meski nampaknya seperti cinta bertepuk sebelah tangan 🤔",
+    "bgus, kpn ciuman?",
+    "pasangan ini benar-benar saling mencintai 🪽"
+]
+
+async def jodoh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.message.chat_id
+    members = chat_members.get(chat_id, {})
+
+    if len(members) < 2:
+        await update.message.reply_text("belum ada cukup member terdeteksi!")
+        return
+
+    terpilih = random.sample(list(members.values()), 2)
+    mentions = []
+    for user in terpilih:
+        if user.username:
+            mentions.append(f"@{user.username}")
+        else:
+            mentions.append(f'<a href="tg://user?id={user.id}">{user.first_name}</a>')
+
+    pesan = random.choice(pesan_jodoh)
+
+    await update.message.reply_text(
+        f"pasangan di grup ini adalah:\n\n"
+        f"{mentions[0]} 💘 {mentions[1]}\n\n"
+        f"{pesan}",
+        parse_mode="HTML"
+    )
+
 async def skor(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
     data = await get_scores_dict(chat_id)
@@ -184,9 +245,10 @@ async def track_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if chat_type == "private":
         from game_spy import proses_spy_guess
-        from game_tebak import proses_duel_dm
+        from game_tebak import proses_duel_dm, proses_taruhan_dm
         await proses_spy_guess(update, context)
         await proses_duel_dm(update, context)
+        await proses_taruhan_dm(update, context)
         return
 
     chat_id = update.message.chat_id
@@ -199,7 +261,8 @@ async def track_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         recent_chatters[chat_id] = deque(maxlen=MAX_RECENT)
     recent_chatters[chat_id].append((time.time(), user))
 
-    from game_tebak import proses_tebakan_internal, proses_chaos_guess, proses_duel_guess
+    from game_tebak import proses_tebakan_internal, proses_chaos_guess, proses_duel_guess, proses_taruhan_guess
     await proses_tebakan_internal(update, context)
     await proses_chaos_guess(update, context)
     await proses_duel_guess(update, context)
+    await proses_taruhan_guess(update, context)
