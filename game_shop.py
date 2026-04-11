@@ -4,7 +4,7 @@ from data import (
     SHOP_ITEMS, EXCHANGE_RATES, MAX_BADGES, SLOT_INITIAL,
     init_wallet, format_rupiah, get_nama, get_raw_name,
 )
-from db import db_get_wallet, db_set_wallet, db_get_badges, db_set_badges, db_get_scores, db_set_score
+from db import db_get_wallet, db_set_wallet, db_get_badges, db_set_badges, db_get_scores, db_set_score, db_get_wallet_by_any_name
 
 pending_badge_replace = {}
 
@@ -198,5 +198,71 @@ async def tukar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"menjadi <b>{format_rupiah(rupiah_didapat)}</b> saldo.\n\n"
         f"💰 saldo sekarang: <b>{format_rupiah(saldo)}</b>\n"
         f"🏅 sisa skor: <b>{new_score}</b>",
+        parse_mode="HTML"
+    )
+
+async def transfer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    uid = user.id
+    nama = await get_nama(user)
+
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text(
+            "💸 cara transfer:\n\n"
+            "<code>/transfer @username jumlah</code>\n"
+            "contoh: <code>/transfer @camelliabr 50000</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    target_username = context.args[0].replace("@", "")
+
+    try:
+        jumlah = int(context.args[1].replace(".", "").replace(",", ""))
+    except ValueError:
+        await update.message.reply_text("❌ jumlah harus berupa angka")
+        return
+
+    if jumlah <= 0:
+        await update.message.reply_text("❌ jumlah transfer harus lebih dari 0")
+        return
+
+    await init_wallet(user)
+    sender_wallet = await db_get_wallet(uid)
+    sender_saldo = sender_wallet["saldo"] if sender_wallet else SLOT_INITIAL
+
+    if sender_saldo < jumlah:
+        await update.message.reply_text(
+            f"❌ <b>SALDO TIDAK CUKUP!</b>\n\n"
+            f"saldo-mu: <b>{format_rupiah(sender_saldo)}</b>\n"
+            f"transfer: <b>{format_rupiah(jumlah)}</b>\n\n"
+            f"kurang: <b>{format_rupiah(jumlah - sender_saldo)}</b>",
+            parse_mode="HTML"
+        )
+        return
+
+    target_wallet = await db_get_wallet_by_any_name(f"@{target_username}")
+    if not target_wallet:
+        await update.message.reply_text(
+            f"❌ @{target_username} tidak ditemukan di daftar pemain"
+        )
+        return
+
+    if target_wallet["user_id"] == uid:
+        await update.message.reply_text("❌ tidak bisa transfer ke diri sendiri")
+        return
+
+    new_sender_saldo = sender_saldo - jumlah
+    new_target_saldo = target_wallet["saldo"] + jumlah
+
+    await db_set_wallet(uid, get_raw_name(user), new_sender_saldo)
+    await db_set_wallet(target_wallet["user_id"], target_wallet["name"], new_target_saldo)
+
+    await update.message.reply_text(
+        f"✅ <b>TRANSFER BERHASIL!</b>\n\n"
+        f"dari: {nama}\n"
+        f"ke: @{target_username}\n"
+        f"jumlah: <b>{format_rupiah(jumlah)}</b>\n\n"
+        f"💳 saldo-mu sekarang: <b>{format_rupiah(new_sender_saldo)}</b>",
         parse_mode="HTML"
     )
