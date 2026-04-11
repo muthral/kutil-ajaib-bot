@@ -22,12 +22,12 @@ async def spy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     spy_sessions[chat_id] = {
         "players": {},
         "votes": {},
+        "voted_users": set(),
         "msg_id": None,
         "spy": None,
         "word": None,
         "started": False,
         "vote_started": False,
-        "discussion_task": None
     }
 
     await send_sticker(update, STICKER_SPY, context, is_reply=True)
@@ -95,26 +95,38 @@ async def pemain(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(text)
 
-async def start_discussion(chat_id, context):
-    await asyncio.sleep(120)
+async def _delayed_end_vote(chat_id, context):
+    await asyncio.sleep(60)
+    await end_vote(chat_id, context)
+
+async def _spy_countdown(chat_id, context):
+    await asyncio.sleep(60)
 
     if chat_id not in spy_sessions:
         return
     if spy_sessions[chat_id].get("vote_started", False):
         return
 
+    await context.bot.send_message(chat_id, "⏰ tinggal 1 menit lagi!")
+
+    await asyncio.sleep(60)
+
+    if chat_id not in spy_sessions:
+        return
+    if spy_sessions[chat_id].get("vote_started", False):
+        return
+
+    spy_sessions[chat_id]["vote_started"] = True
     await send_sticker(chat_id, STICKER_VOTE, context)
     await context.bot.send_message(
         chat_id,
-        "🗳 diskusi selesai\n\n"
+        "🗳 diskusi selesai!\n\n"
         "sekarang vote spy\n"
         "gunakan /vote @username\n\n"
         "⏱ waktu vote 1 menit"
     )
 
-    spy_sessions[chat_id]["vote_started"] = True
-    await asyncio.sleep(60)
-    await end_vote(chat_id, context)
+    asyncio.create_task(_delayed_end_vote(chat_id, context))
 
 async def spy_guess_timeout(spy_id, chat_id, context):
     await asyncio.sleep(30)
@@ -187,8 +199,8 @@ async def end_vote(chat_id, context):
     spy_id = spy_sessions[chat_id]["spy"]
     word = spy_sessions[chat_id]["word"]
 
-    spy_user = players[spy_id]
-    spy_name = await get_nama(spy_user)
+    spy_user = players.get(spy_id)
+    spy_name = await get_nama(spy_user) if spy_user else "?"
 
     del spy_sessions[chat_id]
 
@@ -298,9 +310,7 @@ async def startspy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "waktunya saling fitnah untuk menebak siapa SPY nya!"
     )
 
-    await asyncio.sleep(60)
-    await context.bot.send_message(chat_id, "⏰ tinggal 1 menit lagi!")
-    asyncio.create_task(start_discussion(chat_id, context))
+    asyncio.create_task(_spy_countdown(chat_id, context))
 
 async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
@@ -365,8 +375,7 @@ async def skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⏱ waktu vote 1 menit"
     )
 
-    await asyncio.sleep(60)
-    await end_vote(chat_id, context)
+    asyncio.create_task(_delayed_end_vote(chat_id, context))
 
 async def stopspy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
