@@ -54,6 +54,33 @@ async def db_get_wallet_by_any_name(name: str) -> Optional[Dict[str, Any]]:
             return {"user_id": row["user_id"], "name": row["name"], "saldo": row["saldo"]}
         return None
 
+async def db_update_saldo(user_id: int, delta: int) -> Optional[int]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "UPDATE wallet SET saldo = saldo + $1 WHERE user_id = $2 RETURNING saldo",
+            delta, user_id
+        )
+        return row["saldo"] if row else None
+
+async def db_transfer_saldo(from_uid: int, to_uid: int, amount: int):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row_from = await conn.fetchrow(
+                "UPDATE wallet SET saldo = saldo - $1 WHERE user_id = $2 AND saldo >= $1 RETURNING saldo",
+                amount, from_uid
+            )
+            if row_from is None:
+                raise ValueError("saldo_kurang")
+            row_to = await conn.fetchrow(
+                "UPDATE wallet SET saldo = saldo + $1 WHERE user_id = $2 RETURNING saldo",
+                amount, to_uid
+            )
+            if row_to is None:
+                raise ValueError("target_not_found")
+            return row_from["saldo"], row_to["saldo"]
+
 async def db_delete_wallet(user_id: int):
     pool = await get_pool()
     async with pool.acquire() as conn:
