@@ -4,7 +4,7 @@ from data import (
     SHOP_ITEMS, EXCHANGE_RATES, MAX_BADGES, SLOT_INITIAL,
     init_wallet, format_rupiah, get_nama, get_raw_name,
 )
-from db import db_get_wallet, db_set_wallet, db_get_badges, db_set_badges, db_get_scores, db_set_score, db_get_wallet_by_any_name
+from db import db_get_wallet, db_set_wallet, db_get_badges, db_set_badges, db_get_scores, db_set_score, db_get_wallet_by_any_name, db_transfer_saldo
 
 pending_badge_replace = {}
 
@@ -252,11 +252,18 @@ async def transfer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ tidak bisa transfer ke diri sendiri")
         return
 
-    new_sender_saldo = sender_saldo - jumlah
-    new_target_saldo = target_wallet["saldo"] + jumlah
-
-    await db_set_wallet(uid, get_raw_name(user), new_sender_saldo)
-    await db_set_wallet(target_wallet["user_id"], target_wallet["name"], new_target_saldo)
+    try:
+        new_sender_saldo, _ = await db_transfer_saldo(uid, target_wallet["user_id"], jumlah)
+    except ValueError as e:
+        if "saldo_kurang" in str(e):
+            await update.message.reply_text(
+                f"❌ <b>SALDO TIDAK CUKUP!</b>\n\n"
+                f"transfer: <b>{format_rupiah(jumlah)}</b>",
+                parse_mode="HTML"
+            )
+        else:
+            await update.message.reply_text(f"❌ gagal transfer ke @{target_username}")
+        return
 
     await update.message.reply_text(
         f"✅ <b>TRANSFER BERHASIL!</b>\n\n"
