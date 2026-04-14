@@ -1,7 +1,7 @@
 import os
 import asyncio
 import logging
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
 from commands import start, help_cmd, apa, hitung, tagrandom, tag7, tag2, jodoh, skor, track_member
 from game_tebak import (
@@ -12,6 +12,10 @@ from game_tebak import (
 from game_spy import spy, join, startspy, vote, pemain, stopspy, skip
 from game_slot import slot, kekayaan
 from game_shop import shop, beli, tukar, transfer
+from game_uno import (
+    unotaruhan, joinuno, startuno, stopuno,
+    handle_uno_bet_callback, handle_uno_play_callback
+)
 from admin import setsaldo, addsaldo, setscore, addscore
 from db import close_pool
 from import_initial_data import import_data
@@ -72,10 +76,18 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("stopspy", stopspy))
     app.add_handler(CommandHandler("skip", skip))
 
+    app.add_handler(CommandHandler("unotaruhan", unotaruhan))
+    app.add_handler(CommandHandler("joinuno", joinuno))
+    app.add_handler(CommandHandler("startuno", startuno))
+    app.add_handler(CommandHandler("stopuno", stopuno))
+
     app.add_handler(CommandHandler("setsaldo", setsaldo))
     app.add_handler(CommandHandler("addsaldo", addsaldo))
     app.add_handler(CommandHandler("setscore", setscore))
     app.add_handler(CommandHandler("addscore", addscore))
+
+    app.add_handler(CallbackQueryHandler(handle_uno_bet_callback, pattern="^unobet_"))
+    app.add_handler(CallbackQueryHandler(handle_uno_play_callback, pattern="^(unoplay_|unodraw_|unocolor_|unopass_)"))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, track_member))
 
