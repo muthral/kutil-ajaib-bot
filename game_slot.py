@@ -79,3 +79,4 @@ async def kekayaan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text += f"\n💡 saldo awal: {format_rupiah(SLOT_INITIAL)}\n🎰 bayar per spin: {format_rupiah(SLOT_COST)}"
     await update.message.reply_text(text, parse_mode="HTML")
+    
