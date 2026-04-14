@@ -191,3 +191,4 @@ async def addscore(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ skor {nama} ditambah {tambahan} poin.\n"
         f"skor sekarang: {new_score}"
     )
+
