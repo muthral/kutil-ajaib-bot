@@ -772,3 +772,4 @@ async def proses_taruhan_guess(update: Update, context: ContextTypes.DEFAULT_TYP
         f"🎲 giliran: <b>{next_nama}</b>",
         parse_mode="HTML"
     )
+
