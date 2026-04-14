@@ -1,16 +1,63 @@
 import random
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
+    InlineQueryResultCachedSticker,
 )
 from telegram.ext import ContextTypes
 
 from data import add_score, get_nama, get_raw_name, init_wallet, format_rupiah, SLOT_INITIAL
 from db import db_get_wallet, db_set_wallet
 
-# -------------------- DECK & CARD HELPERS --------------------
+# -------------------- STICKER MAPPING --------------------
+STICKERS = {
+    "b_0": "BQADBAAD2QEAAl9XmQAB--inQsYcLTsC", "b_1": "BQADBAAD2wEAAl9XmQABBzh4U-rFicEC",
+    "b_2": "BQADBAAD3QEAAl9XmQABo3l6TT0MzKwC", "b_3": "BQADBAAD3wEAAl9XmQAB2y-3TSapRtIC",
+    "b_4": "BQADBAAD4QEAAl9XmQABT6nhOuolqKYC", "b_5": "BQADBAAD4wEAAl9XmQABwRfmekGnpn0C",
+    "b_6": "BQADBAAD5QEAAl9XmQABQITgUsEsqxsC", "b_7": "BQADBAAD5wEAAl9XmQABVhPF6EcfWjEC",
+    "b_8": "BQADBAAD6QEAAl9XmQABP6baig0pIvYC", "b_9": "BQADBAAD6wEAAl9XmQAB0CQdsQs_pXIC",
+    "b_draw": "BQADBAAD7QEAAl9XmQAB00Wii7R3gDUC", "b_skip": "BQADBAAD8QEAAl9XmQAB_RJHYKqlc-wC",
+    "b_reverse": "BQADBAAD7wEAAl9XmQABo7D0B9NUPmYC",
+    "g_0": "BQADBAAD9wEAAl9XmQABb8CaxxsQ-Y8C", "g_1": "BQADBAAD-QEAAl9XmQAB9B6ti_j6UB0C",
+    "g_2": "BQADBAAD-wEAAl9XmQABYpLjOzbRz8EC", "g_3": "BQADBAAD_QEAAl9XmQABKvc2ZCiY-D8C",
+    "g_4": "BQADBAAD_wEAAl9XmQABJB52wzPdHssC", "g_5": "BQADBAADAQIAAl9XmQABp_Ep1I4GA2cC",
+    "g_6": "BQADBAADAwIAAl9XmQABaaMxxa4MihwC", "g_7": "BQADBAADBQIAAl9XmQABv5Q264Crz8gC",
+    "g_8": "BQADBAADBwIAAl9XmQABjMH-X9UHh8sC", "g_9": "BQADBAADCQIAAl9XmQAB26fZ2fW7vM0C",
+    "g_draw": "BQADBAADCwIAAl9XmQAB64jIZrgXrQUC", "g_skip": "BQADBAADDwIAAl9XmQAB17yhhnh46VQC",
+    "g_reverse": "BQADBAADDQIAAl9XmQAB_xcaab0DkegC",
+    "r_0": "BQADBAADEQIAAl9XmQABiUfr1hz-zT8C", "r_1": "BQADBAADEwIAAl9XmQAB5bWfwJGs6Q0C",
+    "r_2": "BQADBAADFQIAAl9XmQABHR4mg9Ifjw0C", "r_3": "BQADBAADFwIAAl9XmQABYBx5O_PG2QIC",
+    "r_4": "BQADBAADGQIAAl9XmQABTQpGrlvet3cC", "r_5": "BQADBAADGwIAAl9XmQABbdLt4gdntBQC",
+    "r_6": "BQADBAADHQIAAl9XmQABqEI274p3lSoC", "r_7": "BQADBAADHwIAAl9XmQABCw8u67Q4EK4C",
+    "r_8": "BQADBAADIQIAAl9XmQAB8iDJmLxp8ogC", "r_9": "BQADBAADIwIAAl9XmQAB_HCAww1kNGYC",
+    "r_draw": "BQADBAADJQIAAl9XmQABuz0OZ4l3k6MC", "r_skip": "BQADBAADKQIAAl9XmQAC2AL5Ok_ULwI",
+    "r_reverse": "BQADBAADJwIAAl9XmQABu2tIeQTpDvUC",
+    "y_0": "BQADBAADKwIAAl9XmQAB_nWoNKe8DOQC", "y_1": "BQADBAADLQIAAl9XmQABVprAGUDKgOQC",
+    "y_2": "BQADBAADLwIAAl9XmQABqyT4_YTm54EC", "y_3": "BQADBAADMQIAAl9XmQABGC-Xxg_N6fIC",
+    "y_4": "BQADBAADMwIAAl9XmQABbc-ZGL8kApAC", "y_5": "BQADBAADNQIAAl9XmQAB67QJZIF6XAcC",
+    "y_6": "BQADBAADNwIAAl9XmQABJg_7XXoITsoC", "y_7": "BQADBAADOQIAAl9XmQABVrd7OcS2k34C",
+    "y_8": "BQADBAADOwIAAl9XmQABRpJSahBWk3EC", "y_9": "BQADBAADPQIAAl9XmQAB9MwJWKLJogYC",
+    "y_draw": "BQADBAADPwIAAl9XmQABaPYK8oYg84cC", "y_skip": "BQADBAADQwIAAl9XmQABO_AZKtxY6IMC",
+    "y_reverse": "BQADBAADQQIAAl9XmQABZdQFahGG6UQC",
+    "draw_four": "BQADBAAD9QEAAl9XmQABVlkSNfhn76cC",
+    "colorchooser": "BQADBAAD8wEAAl9XmQABl9rUOPqx4E4C",
+}
+
+STICKER_TO_CARD = {}
+for _key, _fid in STICKERS.items():
+    if _key == "draw_four":
+        STICKER_TO_CARD[_fid] = ("x", "draw_four")
+    elif _key == "colorchooser":
+        STICKER_TO_CARD[_fid] = ("x", "colorchooser")
+    else:
+        _c, _v = _key.split("_", 1)
+        STICKER_TO_CARD[_fid] = (_c, _v)
+
 COLORS = ["r", "g", "b", "y"]
 COLOR_LABEL = {"r": "🔴Merah", "g": "🟢Hijau", "b": "🔵Biru", "y": "🟡Kuning"}
+COLOR_FULL = {"r": "red", "g": "green", "b": "blue", "y": "yellow"}
 COLOR_EMOJI_INFO = {"r": "❤️", "g": "💚", "b": "💙", "y": "💛"}
+
+DRAW_INLINE_TEXT = "🃏 Mengambil kartu..."
 
 def _new_deck():
     deck = []
@@ -25,11 +72,32 @@ def _new_deck():
     random.shuffle(deck)
     return deck
 
+def _sticker(card, playable=True):
+    c, v = card
+    if v in ("colorchooser", "draw_four"):
+        return STICKERS.get(v)
+    key = f"{c}_{v}"
+    return STICKERS.get(key)
+
 def _label(card):
     c, v = card
     col = COLOR_LABEL.get(c, "")
     lbl = {"draw": "+2", "skip": "⊘", "reverse": "⇌", "colorchooser": "Wild", "draw_four": "Wild+4"}
     return f"{col} {lbl.get(v, v)}" if col else lbl.get(v, v)
+
+def _label_info(card, chosen_color=None):
+    c, v = card
+    name_map = {
+        "0": "0", "1": "1", "2": "2", "3": "3", "4": "4",
+        "5": "5", "6": "6", "7": "7", "8": "8", "9": "9",
+        "draw": "Draw Two", "skip": "Skip", "reverse": "Reverse",
+        "colorchooser": "Color Chooser", "draw_four": "Draw Four",
+    }
+    name = name_map.get(v, v)
+    if c == "x":
+        chosen_emoji = COLOR_EMOJI_INFO.get(chosen_color, "") if chosen_color else ""
+        return f"{chosen_emoji}⬛️{name}"
+    return f"{COLOR_EMOJI_INFO.get(c, '')}{name}"
 
 def _can_play(card, top, chosen_color=None):
     c, v = card
@@ -39,6 +107,9 @@ def _can_play(card, top, chosen_color=None):
     if tc == "x":
         return c == chosen_color if chosen_color else True
     return c == tc or v == tv
+
+def _playable(hand, top, chosen_color=None):
+    return [i for i, card in enumerate(hand) if _can_play(card, top, chosen_color)]
 
 def _draw_cards(session, n):
     drawn = []
@@ -53,10 +124,8 @@ def _draw_cards(session, n):
             drawn.append(session["deck"].pop())
     return drawn
 
-# -------------------- UNO SESSION STORAGE --------------------
 uno_sessions = {}
 
-# -------------------- COMMAND HANDLERS --------------------
 async def unotaruhan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cid = update.message.chat_id
     if cid in uno_sessions:
@@ -198,7 +267,6 @@ async def leaveuno(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _skip_done_players(s)
         await _send_turn(cid, s, context)
 
-# -------------------- BETTING & GAME START --------------------
 async def handle_uno_bet_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     uid = q.from_user.id
@@ -315,14 +383,16 @@ async def _validate_and_start(cid, context):
         f"🏆 Total pot: <b>{format_rupiah(pot)}</b>\n\n"
         f"👥 Pemain:\n{names}\n\n"
         f"7 kartu sudah dibagikan!\n"
-        f"klik tombol <b>Lihat Kartu</b> untuk melihat & memainkan kartu.",
+        f"gunakan tombol <b>Lihat Kartu</b> untuk melihat & memainkan kartu.",
         parse_mode="HTML"
     )
 
+    stk = _sticker(top)
+    if stk:
+        await context.bot.send_sticker(cid, stk)
     await context.bot.send_message(cid, f"🎴 kartu awal: <b>{_label(top)}</b>", parse_mode="HTML")
     await _send_turn(cid, s, context)
 
-# -------------------- TURN MANAGEMENT --------------------
 async def _send_turn(cid, s, context):
     players = s["players"]
     if not players: return
@@ -344,7 +414,7 @@ async def _send_turn(cid, s, context):
         player_parts.append(f"{pname} ({pcards} kartu)")
 
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🃏 Lihat Kartu", callback_data=f"unoview_{cid}")]
+        [InlineKeyboardButton("🃏 Lihat Kartu", switch_inline_query_current_chat="")]
     ])
 
     msg = await context.bot.send_message(
@@ -356,6 +426,53 @@ async def _send_turn(cid, s, context):
         parse_mode="HTML"
     )
     s["turn_msg_id"] = msg.message_id
+
+async def handle_uno_inline(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.inline_query
+    uid = query.from_user.id
+
+    cid = None
+    for c, sess in uno_sessions.items():
+        if uid in sess.get("hands", {}) and uid not in sess.get("eliminated", set()):
+            cid = c
+            break
+
+    if cid is None:
+        await query.answer([], cache_time=0, is_personal=True)
+        return
+
+    s = uno_sessions[cid]
+    hand = s["hands"].get(uid, [])
+    top = s["discard"][-1]
+    chosen = s.get("chosen_color")
+    current_uid = s["players"][s["turn_idx"] % len(s["players"])]
+
+    results = []
+
+    for i, card in enumerate(hand):
+        stk = _sticker(card)
+        if stk:
+            can = _can_play(card, top, chosen)
+            title = f"{'✅' if can else '❌'} {_label(card)}"
+            if current_uid != uid:
+                title = f"⏳ {title}"
+
+            results.append(
+                InlineQueryResultCachedSticker(
+                    id=f"card_{i}",
+                    sticker_file_id=stk,
+                    title=title,
+                )
+            )
+
+    if not results:
+        await query.answer([], cache_time=0, is_personal=True)
+        return
+
+    try:
+        await query.answer(results, cache_time=0, is_personal=True)
+    except Exception:
+        pass
 
 def _skip_done_players(s):
     players = s["players"]
@@ -371,107 +488,64 @@ def _skip_done_players(s):
         s["turn_idx"] = (s["turn_idx"] + s["dir"]) % n
         visited += 1
 
-# -------------------- VIEW CARDS (PRIVATE MESSAGE) --------------------
-async def handle_uno_view_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Tombol 'Lihat Kartu' ditekan di grup."""
-    q = update.callback_query
-    uid = q.from_user.id
-    cid = int(q.data.split("_")[1])
+async def proses_uno_inline_draw(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg or not msg.via_bot:
+        return
+    if msg.via_bot.id != context.bot.id:
+        return
+    if msg.chat.type == "private":
+        return
+    if msg.text != DRAW_INLINE_TEXT:
+        return
+
+    cid = msg.chat_id
+    uid = msg.from_user.id
 
     if cid not in uno_sessions:
-        await q.answer("Sesi sudah tidak ada.", show_alert=True)
         return
     s = uno_sessions[cid]
     if uid not in s.get("hands", {}):
-        await q.answer("Kamu bukan pemain.", show_alert=True)
         return
     if uid in s.get("eliminated", set()):
-        await q.answer("Kamu sudah keluar dari game.", show_alert=True)
         return
 
-    # Cek apakah giliran user
     players = s["players"]
     cur = players[s["turn_idx"] % len(players)]
     if uid != cur:
-        await q.answer("Bukan giliran kamu!", show_alert=True)
+        await msg.reply_text("⚠️ bukan giliran kamu!")
         return
 
-    await q.answer()
+    if s.get("color_pending"):
+        await msg.reply_text("⚠️ pilih warna dulu!")
+        return
 
-    hand = s["hands"][uid]
+    drawn = _draw_cards(s, 1)
+    nama = await get_nama(s["objs"][uid])
+    if not drawn:
+        await context.bot.send_message(cid,
+            f"🃏 <b>{nama}</b> tidak bisa ambil kartu (deck kosong)", parse_mode="HTML")
+        await _advance(cid, s, context)
+        return
+
+    card = drawn[0]
+    s["hands"][uid].extend(drawn)
+    await context.bot.send_message(cid,
+        f"🃏 <b>{nama}</b> ambil 1 kartu ({len(s['hands'][uid])} kartu)", parse_mode="HTML")
+
     top = s["discard"][-1]
-    chosen = s.get("chosen_color")
-
-    # Kirim pesan pribadi dengan daftar kartu
-    try:
-        # Buat tombol untuk setiap kartu
-        buttons = []
-        row = []
-        for idx, card in enumerate(hand):
-            playable = _can_play(card, top, chosen)
-            label = _label(card)
-            if not playable:
-                label = f"❌ {label}"
-            row.append(InlineKeyboardButton(label, callback_data=f"unoplay_{cid}_{idx}"))
-            if len(row) == 2:  # 2 tombol per baris biar rapi
-                buttons.append(row)
-                row = []
-        if row:
-            buttons.append(row)
-
-        # Tambah tombol aksi
-        buttons.append([InlineKeyboardButton("🃏 Ambil Kartu", callback_data=f"unodraw_{cid}")])
-        buttons.append([InlineKeyboardButton("ℹ️ Info Permainan", callback_data=f"unoinfo_{cid}")])
-
-        await context.bot.send_message(
-            uid,
-            f"🃏 <b>KARTU MILIKMU</b> ({len(hand)} kartu)\n"
-            f"🎴 Kartu teratas: {_label(top)}\n\n"
-            f"Klik kartu untuk memainkannya. Kartu yang ❌ tidak bisa dimainkan.",
-            reply_markup=InlineKeyboardMarkup(buttons),
-            parse_mode="HTML"
+    if _can_play(card, top, s.get("chosen_color")):
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("▶ Mainkan", callback_data=f"unoplay_{cid}_{len(s['hands'][uid])-1}")],
+            [InlineKeyboardButton("⏭ Pass", callback_data=f"unopass_{cid}")],
+        ])
+        await context.bot.send_message(cid,
+            f"kartu yang diambil <b>{nama}</b> bisa dimainkan!",
+            reply_markup=kb, parse_mode="HTML"
         )
-    except Exception as e:
-        await context.bot.send_message(
-            cid,
-            f"⚠️ Tidak bisa mengirim pesan pribadi ke {await get_nama(s['objs'][uid])}. "
-            f"Pastikan kamu sudah pernah chat dengan bot.",
-            parse_mode="HTML"
-        )
+    else:
+        await _advance(cid, s, context)
 
-async def handle_uno_info_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Tombol info di pesan pribadi."""
-    q = update.callback_query
-    uid = q.from_user.id
-    cid = int(q.data.split("_")[1])
-
-    if cid not in uno_sessions:
-        await q.answer("Sesi sudah tidak ada.", show_alert=True)
-        return
-    s = uno_sessions[cid]
-    if uid not in s.get("hands", {}):
-        await q.answer("Kamu bukan pemain.", show_alert=True)
-        return
-
-    players = s["players"]
-    cur = players[s["turn_idx"] % len(players)]
-    cur_obj = s["objs"][cur]
-    top = s["discard"][-1]
-    chosen = s.get("chosen_color")
-
-    active = [p for p in players if p not in s.get("finish_order", []) and p not in s.get("eliminated", set())]
-    info = f"🎲 Giliran: {await get_nama(cur_obj)}\n"
-    info += f"🎴 Kartu teratas: {_label(top)}"
-    if chosen:
-        info += f" (warna {COLOR_LABEL.get(chosen, chosen)})"
-    info += "\n\n👥 Pemain:\n"
-    for p in active:
-        pname = await get_nama(s["objs"][p])
-        info += f"• {pname} ({len(s['hands'][p])} kartu)\n"
-
-    await q.edit_message_text(info, parse_mode="HTML")
-
-# -------------------- PLAY CARD (via private message callback) --------------------
 async def handle_uno_play_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     uid = q.from_user.id
@@ -489,8 +563,6 @@ async def handle_uno_play_callback(update: Update, context: ContextTypes.DEFAULT
     elif data.startswith("unopass_"):
         cid = int(data.split("_")[1])
         await _action_pass(uid, cid, q, context)
-    elif data.startswith("unoinfo_"):
-        await handle_uno_info_callback(update, context)
 
 async def _action_play(uid, cid, idx, q, context):
     await q.answer()
@@ -514,7 +586,12 @@ async def _action_play(uid, cid, idx, q, context):
     s["chosen_color"] = None
     nama = await get_nama(s["objs"][uid])
 
-    await q.edit_message_text(f"✅ Kamu memainkan: {_label(card)}", parse_mode="HTML")
+    await q.edit_message_reply_markup(None)
+
+    stk = _sticker(card)
+    if stk:
+        try: await context.bot.send_sticker(cid, stk)
+        except Exception: pass
 
     await context.bot.send_message(cid,
         f"🃏 <b>{nama}</b> memainkan: <b>{_label(card)}</b> ({len(hand)} kartu tersisa)",
@@ -617,24 +694,23 @@ async def _action_draw(uid, cid, q, context):
     drawn = _draw_cards(s, 1)
     nama = await get_nama(s["objs"][uid])
     if not drawn:
-        await q.edit_message_text("🃏 Deck kosong, tidak bisa ambil kartu.")
+        await q.edit_message_reply_markup(None)
         await context.bot.send_message(cid, f"🃏 <b>{nama}</b> tidak bisa ambil kartu (deck kosong)", parse_mode="HTML")
         await _advance(cid, s, context); return
 
     card = drawn[0]
     s["hands"][uid].extend(drawn)
-    await q.edit_message_text(f"🃏 Kamu ambil 1 kartu. ({len(s['hands'][uid])} kartu)")
+    await q.edit_message_reply_markup(None)
     await context.bot.send_message(cid, f"🃏 <b>{nama}</b> ambil 1 kartu", parse_mode="HTML")
 
     top = s["discard"][-1]
     if _can_play(card, top, s.get("chosen_color")):
-        # Kirim pesan baru dengan pilihan mainkan/pass
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("▶ Mainkan kartu yang diambil", callback_data=f"unoplay_{cid}_{len(s['hands'][uid])-1}")],
+            [InlineKeyboardButton("▶ Mainkan", callback_data=f"unoplay_{cid}_{len(s['hands'][uid])-1}")],
             [InlineKeyboardButton("⏭ Pass", callback_data=f"unopass_{cid}")],
         ])
-        await context.bot.send_message(uid,
-            f"Kartu yang kamu ambil: {_label(card)}\nKartu ini bisa dimainkan!",
+        await context.bot.send_message(cid,
+            f"kartu yang diambil <b>{nama}</b> bisa dimainkan!",
             reply_markup=kb, parse_mode="HTML"
         )
     else:
@@ -648,7 +724,7 @@ async def _action_pass(uid, cid, q, context):
     cur = players[s["turn_idx"] % len(players)]
     if uid != cur:
         await q.answer("bukan giliran kamu!", show_alert=True); return
-    await q.edit_message_text("⏭ Kamu pass.")
+    await q.edit_message_reply_markup(None)
     nama = await get_nama(s["objs"][uid])
     await context.bot.send_message(cid, f"⏭ <b>{nama}</b> pass.", parse_mode="HTML")
     await _advance(cid, s, context)
@@ -719,16 +795,71 @@ async def _end_game(cid, s, context):
     )
     del uno_sessions[cid]
 
-# -------------------- OBSOLETE (dibersihkan) --------------------
-# Fungsi inline query dan sticker tidak digunakan lagi.
-async def handle_uno_inline(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Tidak digunakan, biarkan kosong agar tidak error.
-    pass
-
 async def handle_uno_sticker_in_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Tidak digunakan.
-    pass
+    msg = update.message
+    if not msg or not msg.sticker:
+        return
+    if not msg.via_bot:
+        return
+    if msg.via_bot.id != context.bot.id:
+        return
+    if msg.chat.type == "private":
+        return
 
-async def proses_uno_inline_draw(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Tidak digunakan.
-    pass
+    cid = msg.chat_id
+    uid = msg.from_user.id
+
+    if cid not in uno_sessions:
+        return
+    s = uno_sessions[cid]
+    if uid not in s.get("hands", {}):
+        return
+    if uid in s.get("eliminated", set()):
+        return
+
+    fid = msg.sticker.file_id
+    card = STICKER_TO_CARD.get(fid)
+    if not card:
+        return
+
+    players = s["players"]
+    cur = players[s["turn_idx"] % len(players)]
+    if uid != cur:
+        await msg.reply_text("⚠️ bukan giliran kamu!")
+        return
+
+    if s.get("color_pending"):
+        await msg.reply_text("⚠️ pilih warna dulu!")
+        return
+
+    hand = s["hands"][uid]
+    card_idx = None
+    for i, h in enumerate(hand):
+        if h == card:
+            card_idx = i
+            break
+    if card_idx is None:
+        await msg.reply_text("⚠️ kamu tidak punya kartu ini!")
+        return
+
+    top = s["discard"][-1]
+    if not _can_play(card, top, s.get("chosen_color")):
+        await msg.reply_text("⚠️ kartu ini tidak bisa dimainkan!")
+        return
+
+    hand.pop(card_idx)
+    s["discard"].append(card)
+    s["chosen_color"] = None
+    nama = await get_nama(s["objs"][uid])
+
+    await context.bot.send_message(cid,
+        f"🃏 <b>{nama}</b> memainkan: <b>{_label(card)}</b> ({len(hand)} kartu tersisa)",
+        parse_mode="HTML"
+    )
+    if len(hand) == 1:
+        await context.bot.send_message(cid, f"⚠️ <b>UNO!</b> {nama} tinggal 1 kartu!", parse_mode="HTML")
+    if len(hand) == 0:
+        await _player_done(uid, cid, s, context)
+        return
+
+    await _apply_effect(card, uid, cid, s, context)
