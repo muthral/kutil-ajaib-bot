@@ -37,7 +37,7 @@ if __name__ == "__main__":
 
     app = ApplicationBuilder().token(TOKEN).concurrent_updates(True).build()
 
-    # ... (semua CommandHandler lain tetap sama seperti sebelumnya) ...
+    # Command handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("apa", apa))
@@ -82,13 +82,17 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("setscore", setscore))
     app.add_handler(CommandHandler("addscore", addscore))
 
-    # === Handler UNO yang diperbarui ===
+    # Callback handlers UNO
     app.add_handler(CallbackQueryHandler(handle_uno_bet_callback, pattern="^unobet_"))
     app.add_handler(CallbackQueryHandler(handle_uno_play_callback, pattern="^(unoplay_|unodraw_|unocolor_|unopass_)"))
-    app.add_handler(InlineQueryHandler(handle_uno_inline))
-    app.add_handler(MessageHandler(filters.Sticker.ALL, handle_uno_sticker_in_group))
-    # ==================================
 
+    # Inline query handler (UNTUK FITUR LIHAT KARTU)
+    app.add_handler(InlineQueryHandler(handle_uno_inline))
+
+    # Sticker handler (untuk memainkan kartu via sticker dari inline)
+    app.add_handler(MessageHandler(filters.Sticker.ALL, handle_uno_sticker_in_group))
+
+    # Message handler untuk tracking member dan proses game lainnya
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, track_member))
 
     print("Bot is running...")
