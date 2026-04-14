@@ -1,759 +1,94 @@
 import random
-import asyncio
-import io
-from PIL import Image, ImageDraw, ImageFont
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from data import (
-    add_score, get_nama, get_raw_name,
-    init_wallet, format_rupiah, SLOT_INITIAL
-)
+from data import add_score, get_nama, get_raw_name, init_wallet, format_rupiah, SLOT_INITIAL
 from db import db_get_wallet, db_set_wallet
 
-# =====================
-# SESSIONS STORAGE
-# =====================
-uno_sessions = {}
-uno_dm_pending = {}
-
-# =====================
-# CONSTANTS
-# =====================
-COLORS = ["red", "yellow", "green", "blue"]
-COLOR_DISPLAY = {"red": "🔴", "yellow": "🟡", "green": "🟢", "blue": "🔵"}
-COLOR_RGB = {
-    "red":    (198, 47, 47),
-    "yellow": (210, 175, 20),
-    "green":  (39, 143, 72),
-    "blue":   (35, 99, 180),
-    "wild":   (30, 30, 30),
+# ============================================================
+# STICKER IDs (Classic mode, from kierankihn/telegram-uno-bot)
+# ============================================================
+STICKERS = {
+    "b_0": "BQADBAAD2QEAAl9XmQAB--inQsYcLTsC", "b_1": "BQADBAAD2wEAAl9XmQABBzh4U-rFicEC",
+    "b_2": "BQADBAAD3QEAAl9XmQABo3l6TT0MzKwC", "b_3": "BQADBAAD3wEAAl9XmQAB2y-3TSapRtIC",
+    "b_4": "BQADBAAD4QEAAl9XmQABT6nhOuolqKYC", "b_5": "BQADBAAD4wEAAl9XmQABwRfmekGnpn0C",
+    "b_6": "BQADBAAD5QEAAl9XmQABQITgUsEsqxsC", "b_7": "BQADBAAD5wEAAl9XmQABVhPF6EcfWjEC",
+    "b_8": "BQADBAAD6QEAAl9XmQABP6baig0pIvYC", "b_9": "BQADBAAD6wEAAl9XmQAB0CQdsQs_pXIC",
+    "b_draw": "BQADBAAD7QEAAl9XmQAB00Wii7R3gDUC", "b_skip": "BQADBAAD8QEAAl9XmQAB_RJHYKqlc-wC",
+    "b_reverse": "BQADBAAD7wEAAl9XmQABo7D0B9NUPmYC",
+    "g_0": "BQADBAAD9wEAAl9XmQABb8CaxxsQ-Y8C", "g_1": "BQADBAAD-QEAAl9XmQAB9B6ti_j6UB0C",
+    "g_2": "BQADBAAD-wEAAl9XmQABYpLjOzbRz8EC", "g_3": "BQADBAAD_QEAAl9XmQABKvc2ZCiY-D8C",
+    "g_4": "BQADBAAD_wEAAl9XmQABJB52wzPdHssC", "g_5": "BQADBAADAQIAAl9XmQABp_Ep1I4GA2cC",
+    "g_6": "BQADBAADAwIAAl9XmQABaaMxxa4MihwC", "g_7": "BQADBAADBQIAAl9XmQABv5Q264Crz8gC",
+    "g_8": "BQADBAADBwIAAl9XmQABjMH-X9UHh8sC", "g_9": "BQADBAADCQIAAl9XmQAB26fZ2fW7vM0C",
+    "g_draw": "BQADBAADCwIAAl9XmQAB64jIZrgXrQUC", "g_skip": "BQADBAADDwIAAl9XmQAB17yhhnh46VQC",
+    "g_reverse": "BQADBAADDQIAAl9XmQAB_xcaab0DkegC",
+    "r_0": "BQADBAADEQIAAl9XmQABiUfr1hz-zT8C", "r_1": "BQADBAADEwIAAl9XmQAB5bWfwJGs6Q0C",
+    "r_2": "BQADBAADFQIAAl9XmQABHR4mg9Ifjw0C", "r_3": "BQADBAADFwIAAl9XmQABYBx5O_PG2QIC",
+    "r_4": "BQADBAADGQIAAl9XmQABTQpGrlvet3cC", "r_5": "BQADBAADGwIAAl9XmQABbdLt4gdntBQC",
+    "r_6": "BQADBAADHQIAAl9XmQABqEI274p3lSoC", "r_7": "BQADBAADHwIAAl9XmQABCw8u67Q4EK4C",
+    "r_8": "BQADBAADIQIAAl9XmQAB8iDJmLxp8ogC", "r_9": "BQADBAADIwIAAl9XmQAB_HCAww1kNGYC",
+    "r_draw": "BQADBAADJQIAAl9XmQABuz0OZ4l3k6MC", "r_skip": "BQADBAADKQIAAl9XmQAC2AL5Ok_ULwI",
+    "r_reverse": "BQADBAADJwIAAl9XmQABu2tIeQTpDvUC",
+    "y_0": "BQADBAADKwIAAl9XmQAB_nWoNKe8DOQC", "y_1": "BQADBAADLQIAAl9XmQABVprAGUDKgOQC",
+    "y_2": "BQADBAADLwIAAl9XmQABqyT4_YTm54EC", "y_3": "BQADBAADMQIAAl9XmQABGC-Xxg_N6fIC",
+    "y_4": "BQADBAADMwIAAl9XmQABbc-ZGL8kApAC", "y_5": "BQADBAADNQIAAl9XmQAB67QJZIF6XAcC",
+    "y_6": "BQADBAADNwIAAl9XmQABJg_7XXoITsoC", "y_7": "BQADBAADOQIAAl9XmQABVrd7OcS2k34C",
+    "y_8": "BQADBAADOwIAAl9XmQABRpJSahBWk3EC", "y_9": "BQADBAADPQIAAl9XmQAB9MwJWKLJogYC",
+    "y_draw": "BQADBAADPwIAAl9XmQABaPYK8oYg84cC", "y_skip": "BQADBAADQwIAAl9XmQABO_AZKtxY6IMC",
+    "y_reverse": "BQADBAADQQIAAl9XmQABZdQFahGG6UQC",
+    "draw_four": "BQADBAAD9QEAAl9XmQABVlkSNfhn76cC",
+    "colorchooser": "BQADBAAD8wEAAl9XmQABl9rUOPqx4E4C",
 }
-NUMBERS = list(range(0, 10))
-SPECIAL = ["Skip", "Reverse", "Draw Two"]
-WILDS = ["Wild", "Wild Draw Four"]
 
-TARUHAN_PRESET = [500_000, 1_000_000, 2_000_000, 3_000_000, 7_000_000]
+# ============================================================
+# CARD HELPERS
+# ============================================================
+COLORS = ["r", "g", "b", "y"]
+COLOR_LABEL = {"r": "🔴Merah", "g": "🟢Hijau", "b": "🔵Biru", "y": "🟡Kuning"}
+COLOR_FULL = {"r": "red", "g": "green", "b": "blue", "y": "yellow"}
 
-# =====================
-# DECK CREATION
-# =====================
-
-def create_deck():
+def _new_deck():
     deck = []
-    for color in COLORS:
-        deck.append({"color": color, "value": "0"})
-        for val in range(1, 10):
-            deck.append({"color": color, "value": str(val)})
-            deck.append({"color": color, "value": str(val)})
-        for sp in SPECIAL:
-            deck.append({"color": color, "value": sp})
-            deck.append({"color": color, "value": sp})
+    for c in COLORS:
+        for v in ["0","1","2","3","4","5","6","7","8","9","draw","skip","reverse"]:
+            deck.append((c, v))
+            if v != "0":
+                deck.append((c, v))
     for _ in range(4):
-        deck.append({"color": "wild", "value": "Wild"})
-        deck.append({"color": "wild", "value": "Wild Draw Four"})
+        deck.append(("x", "colorchooser"))
+        deck.append(("x", "draw_four"))
     random.shuffle(deck)
     return deck
 
-def card_label(card):
-    if card["color"] == "wild":
-        return card["value"]
-    return f"{COLOR_DISPLAY[card['color']]} {card['value']}"
+def _sticker(card, playable=True):
+    c, v = card
+    if v in ("colorchooser", "draw_four"):
+        return STICKERS.get(v)
+    key = f"{c}_{v}"
+    return STICKERS.get(key)
 
-def card_label_plain(card):
-    if card["color"] == "wild":
-        return card["value"]
-    return f"{card['color'].upper()} {card['value']}"
+def _label(card):
+    c, v = card
+    col = COLOR_LABEL.get(c, "")
+    lbl = {"draw": "+2", "skip": "⊘", "reverse": "⇌", "colorchooser": "Wild", "draw_four": "Wild+4"}
+    return f"{col} {lbl.get(v, v)}" if col else lbl.get(v, v)
 
-# =====================
-# CARD IMAGE GENERATOR (Classic Style)
-# =====================
-
-def make_card_image(card):
-    W, H = 140, 210
-    color = card["color"]
-    value = card["value"]
-
-    bg_color = COLOR_RGB.get(color, (30, 30, 30))
-    img = Image.new("RGB", (W, H), bg_color)
-    draw = ImageDraw.Draw(img)
-
-    # Rounded corners via overlay
-    inner_color = tuple(max(0, c - 40) for c in bg_color)
-    oval_box = (10, 10, W - 10, H - 10)
-    draw.rounded_rectangle([0, 0, W - 1, H - 1], radius=18, fill=bg_color)
-
-    # White inner ellipse (classic UNO style)
-    draw.ellipse([15, 25, W - 15, H - 25], fill=(255, 255, 255))
-
-    # Text in ellipse
-    try:
-        font_big = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
-        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
-        font_corner = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
-    except Exception:
-        font_big = ImageFont.load_default()
-        font_small = font_big
-        font_corner = font_big
-
-    # Center label
-    if value in ["Wild", "Wild Draw Four"]:
-        # Colored segments
-        seg_colors = [(198, 47, 47), (35, 99, 180), (210, 175, 20), (39, 143, 72)]
-        seg_box = (20, 30, W - 20, H - 30)
-        seg_w = (seg_box[2] - seg_box[0]) // 2
-        seg_h = (seg_box[3] - seg_box[1]) // 2
-        for i, sc in enumerate(seg_colors):
-            sx = seg_box[0] + (i % 2) * seg_w
-            sy = seg_box[1] + (i // 2) * seg_h
-            draw.rectangle([sx, sy, sx + seg_w, sy + seg_h], fill=sc)
-        # Oval clip
-        draw.ellipse([20, 30, W - 20, H - 30], fill=None, outline=(255, 255, 255), width=3)
-
-        short = "W" if value == "Wild" else "W+4"
-        # Corner
-        draw.text((6, 4), short, fill=(255, 255, 255), font=font_corner)
-        draw.text((W - 28, H - 24), short, fill=(255, 255, 255), font=font_corner)
-
-        # Center text
-        bbox = draw.textbbox((0, 0), short, font=font_big)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        draw.text(((W - tw) // 2, (H - th) // 2), short, fill=(255, 255, 255), font=font_big)
-    else:
-        # Number or Special
-        if value in ["Skip", "Reverse", "Draw Two"]:
-            short = {"Skip": "⊘", "Reverse": "⇌", "Draw Two": "+2"}[value]
-        else:
-            short = value
-
-        # Center
-        bbox = draw.textbbox((0, 0), short, font=font_big)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        cx = (W - tw) // 2
-        cy = (H - th) // 2
-        draw.text((cx, cy), short, fill=bg_color, font=font_big)
-
-        # Corners
-        draw.text((6, 4), short, fill=(255, 255, 255), font=font_corner)
-        draw.text((W - 28, H - 24), short, fill=(255, 255, 255), font=font_corner)
-
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return buf
-
-def make_hand_image(hand):
-    """Combine multiple card images horizontally."""
-    cards_imgs = []
-    for card in hand:
-        buf = make_card_image(card)
-        ci = Image.open(buf)
-        cards_imgs.append(ci)
-
-    if not cards_imgs:
-        img = Image.new("RGB", (140, 210), (50, 50, 50))
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        buf.seek(0)
-        return buf
-
-    W_card, H_card = 140, 210
-    overlap = 30
-    total_w = W_card + (len(cards_imgs) - 1) * (W_card - overlap)
-    img = Image.new("RGB", (total_w, H_card), (30, 30, 30))
-    for i, ci in enumerate(cards_imgs):
-        img.paste(ci, (i * (W_card - overlap), 0))
-
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return buf
-
-# =====================
-# GAME LOGIC HELPERS
-# =====================
-
-def can_play(card, top_card, chosen_color=None):
-    if card["color"] == "wild":
+def _can_play(card, top, chosen_color=None):
+    c, v = card
+    tc, tv = top
+    if v in ("colorchooser", "draw_four"):
         return True
-    if top_card["color"] == "wild":
-        if chosen_color:
-            return card["color"] == chosen_color
-        return True
-    return card["color"] == top_card["color"] or card["value"] == top_card["value"]
+    if tc == "x":
+        return c == chosen_color if chosen_color else True
+    return c == tc or v == tv
 
-def playable_cards(hand, top_card, chosen_color=None):
-    return [i for i, c in enumerate(hand) if can_play(c, top_card, chosen_color)]
+def _playable(hand, top, chosen_color=None):
+    return [i for i, card in enumerate(hand) if _can_play(card, top, chosen_color)]
 
-# =====================
-# TARUHAN FLOW
-# =====================
-
-async def unotaruhan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.message.chat_id
-
-    if chat_id in uno_sessions:
-        await update.message.reply_text("🃏 sudah ada game UNO taruhan, tunggu selesai dulu atau /stopuno")
-        return
-
-    uno_sessions[chat_id] = {
-        "players": [],
-        "player_objs": {},
-        "bets": {},
-        "bets_received": set(),
-        "hands": {},
-        "deck": [],
-        "discard": [],
-        "direction": 1,
-        "current_turn": 0,
-        "chosen_color": None,
-        "pending_draw": 0,
-        "started": False,
-        "bet_amount": None,
-        "draw_pending_uid": None,
-        "finished": False,
-        "finish_order": [],
-    }
-
-    await update.message.reply_text(
-        "🃏 <b>UNO TARUHAN!</b>\n\n"
-        "game UNO dengan taruhan saldo!\n\n"
-        "ketik /joinuno untuk ikut (minimal 2 pemain, maks 10)\n"
-        "setelah semua join, host ketik /startuno",
-        parse_mode="HTML"
-    )
-
-async def joinuno(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.message.chat_id
-    user = update.message.from_user
-
-    if chat_id not in uno_sessions:
-        await update.message.reply_text("belum ada game UNO. ketik /unotaruhan dulu")
-        return
-
-    session = uno_sessions[chat_id]
-
-    if session["started"]:
-        await update.message.reply_text("game sudah dimulai, tidak bisa join")
-        return
-
-    if user.id in session["player_objs"]:
-        await update.message.reply_text("kamu sudah join!")
-        return
-
-    if len(session["players"]) >= 10:
-        await update.message.reply_text("sudah penuh! maksimal 10 pemain")
-        return
-
-    session["players"].append(user.id)
-    session["player_objs"][user.id] = user
-
-    nama = await get_nama(user)
-    jumlah = len(session["players"])
-
-    player_list = "\n".join([f"• {await get_nama(session['player_objs'][uid])}" for uid in session["players"]])
-    await update.message.reply_text(
-        f"✅ {nama} join!\n\n"
-        f"👥 <b>Pemain ({jumlah}):</b>\n{player_list}\n\n"
-        f"{'host ketik /startuno untuk mulai' if jumlah >= 2 else 'menunggu pemain lain...'}",
-        parse_mode="HTML"
-    )
-
-async def startuno(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.message.chat_id
-
-    if chat_id not in uno_sessions:
-        await update.message.reply_text("belum ada game UNO")
-        return
-
-    session = uno_sessions[chat_id]
-
-    if session["started"]:
-        await update.message.reply_text("game sudah dimulai")
-        return
-
-    if len(session["players"]) < 2:
-        await update.message.reply_text("minimal 2 pemain!")
-        return
-
-    session["started"] = True
-
-    await update.message.reply_text(
-        f"💰 <b>UNO TARUHAN - INPUT TARUHAN</b>\n\n"
-        f"bot akan DM setiap pemain untuk memasukkan jumlah taruhan.\n"
-        f"<b>semua pemain harus memasukkan jumlah yang sama!</b>\n\n"
-        f"⏳ menunggu semua pemain input taruhan...",
-        parse_mode="HTML"
-    )
-
-    for uid in session["players"]:
-        user_obj = session["player_objs"][uid]
-        nama = await get_nama(user_obj)
-        try:
-            keyboard = [
-                [
-                    InlineKeyboardButton("Rp 500.000", callback_data=f"unobet_{chat_id}_500000"),
-                    InlineKeyboardButton("Rp 1.000.000", callback_data=f"unobet_{chat_id}_1000000"),
-                ],
-                [
-                    InlineKeyboardButton("Rp 2.000.000", callback_data=f"unobet_{chat_id}_2000000"),
-                    InlineKeyboardButton("Rp 3.000.000", callback_data=f"unobet_{chat_id}_3000000"),
-                ],
-                [
-                    InlineKeyboardButton("Rp 7.000.000", callback_data=f"unobet_{chat_id}_7000000"),
-                ],
-                [
-                    InlineKeyboardButton("✏️ Masukkan angka sendiri", callback_data=f"unobet_{chat_id}_custom"),
-                ],
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await context.bot.send_message(
-                uid,
-                f"🃏 <b>UNO TARUHAN</b>\n\n"
-                f"halo {nama}! 👋\n\n"
-                f"pilih jumlah taruhan kamu:\n"
-                f"<b>semua pemain harus pilih jumlah yang sama!</b>",
-                reply_markup=reply_markup,
-                parse_mode="HTML"
-            )
-            uno_dm_pending[uid] = {"chat_id": chat_id, "stage": "bet_choice"}
-        except Exception:
-            await context.bot.send_message(
-                chat_id,
-                f"⚠️ bot tidak bisa DM {nama}! pastikan sudah pernah chat dengan bot dulu."
-            )
-
-async def handle_uno_bet_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user = query.from_user
-    user_id = user.id
-    data = query.data
-
-    if not data.startswith("unobet_"):
-        return
-
-    parts = data.split("_")
-    if len(parts) < 3:
-        return
-
-    chat_id = int(parts[1])
-    value = parts[2]
-
-    if user_id not in uno_dm_pending:
-        await query.edit_message_text("⚠️ sesi tidak ditemukan, mungkin sudah timeout.")
-        return
-
-    if chat_id not in uno_sessions:
-        uno_dm_pending.pop(user_id, None)
-        await query.edit_message_text("⚠️ sesi UNO sudah tidak ada.")
-        return
-
-    if uno_dm_pending[user_id].get("stage") != "bet_choice":
-        return
-
-    if value == "custom":
-        uno_dm_pending[user_id]["stage"] = "bet_custom"
-        await query.edit_message_text(
-            "✏️ <b>Masukkan jumlah taruhan kamu:</b>\n\n"
-            "ketik angka dalam Rupiah.\n"
-            "contoh: ketik <code>500000</code> untuk Rp 500.000\n\n"
-            "<b>semua pemain harus memasukkan jumlah yang sama!</b>",
-            parse_mode="HTML"
-        )
-        return
-
-    bet_amount = int(value)
-    await _process_uno_bet(user_id, user, chat_id, bet_amount, context, query=query)
-
-async def handle_uno_play_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user = query.from_user
-    user_id = user.id
-    data = query.data
-
-    if data.startswith("unoplay_"):
-        parts = data.split("_")
-        chat_id = int(parts[1])
-        card_idx = int(parts[2])
-        await _play_card_action(user_id, chat_id, card_idx, context, query)
-
-    elif data.startswith("unodraw_"):
-        parts = data.split("_")
-        chat_id = int(parts[1])
-        await _draw_card_action(user_id, chat_id, context, query)
-
-    elif data.startswith("unocolor_"):
-        parts = data.split("_")
-        chat_id = int(parts[1])
-        chosen_color = parts[2]
-        await _choose_color_action(user_id, chat_id, chosen_color, context, query)
-
-    elif data.startswith("unopass_"):
-        parts = data.split("_")
-        chat_id = int(parts[1])
-        await _pass_turn_action(user_id, chat_id, context, query)
-
-async def _process_uno_bet(user_id, user, chat_id, bet_amount, context, query=None):
-    if chat_id not in uno_sessions:
-        if query:
-            await query.edit_message_text("⚠️ sesi UNO sudah tidak ada.")
-        uno_dm_pending.pop(user_id, None)
-        return
-
-    session = uno_sessions[chat_id]
-    session["bets"][user_id] = bet_amount
-    session["bets_received"].add(user_id)
-    uno_dm_pending.pop(user_id, None)
-
-    msg = (
-        f"✅ taruhan <b>{format_rupiah(bet_amount)}</b> tersimpan!\n\n"
-        f"menunggu pemain lain selesai input..."
-    )
-    if query:
-        await query.edit_message_text(msg, parse_mode="HTML")
-    else:
-        await context.bot.send_message(user_id, msg, parse_mode="HTML")
-
-    if len(session["bets_received"]) == len(session["players"]):
-        await _check_and_start_uno(chat_id, context)
-
-async def _check_and_start_uno(chat_id, context):
-    session = uno_sessions[chat_id]
-    players = session["players"]
-    player_objs = session["player_objs"]
-    bets = session["bets"]
-
-    # Check semua taruhan sama
-    bet_values = [bets[uid] for uid in players]
-    if len(set(bet_values)) > 1:
-        bets_detail = "\n".join([
-            f"• {await get_nama(player_objs[uid])}: {format_rupiah(bets[uid])}"
-            for uid in players
-        ])
-        del uno_sessions[chat_id]
-        await context.bot.send_message(
-            chat_id,
-            f"❌ <b>TARUHAN TIDAK SAMA!</b>\n\n"
-            f"{bets_detail}\n\n"
-            f"semua pemain harus memasukkan jumlah yang sama!\n"
-            f"game dibatalkan. coba lagi dengan /unotaruhan",
-            parse_mode="HTML"
-        )
-        return
-
-    bet = bet_values[0]
-    total_pot = bet * len(players)
-
-    # Cek saldo semua pemain
-    errors = []
-    for uid in players:
-        user_obj = player_objs[uid]
-        await init_wallet(user_obj)
-        wallet = await db_get_wallet(uid)
-        saldo = wallet["saldo"] if wallet else SLOT_INITIAL
-        if saldo < bet:
-            errors.append(f"{await get_nama(user_obj)} (saldo: {format_rupiah(saldo)})")
-
-    if errors:
-        del uno_sessions[chat_id]
-        await context.bot.send_message(
-            chat_id,
-            f"❌ <b>SALDO TIDAK CUKUP!</b>\n\n"
-            f"taruhan: {format_rupiah(bet)}\n\n"
-            f"saldo kurang:\n" + "\n".join(f"• {e}" for e in errors) + "\n\n"
-            f"game dibatalkan. top up dulu ya!",
-            parse_mode="HTML"
-        )
-        return
-
-    # Potong saldo semua pemain
-    for uid in players:
-        user_obj = player_objs[uid]
-        wallet = await db_get_wallet(uid)
-        saldo = wallet["saldo"] if wallet else SLOT_INITIAL
-        await db_set_wallet(uid, get_raw_name(user_obj), saldo - bet)
-
-    session["bet_amount"] = bet
-    session["total_pot"] = total_pot
-
-    # Deal kartu
-    deck = create_deck()
-    hands = {uid: [] for uid in players}
-    for _ in range(7):
-        for uid in players:
-            if deck:
-                hands[uid].append(deck.pop())
-
-    # Flip first card (bukan wild)
-    top = None
-    while deck:
-        top = deck.pop()
-        if top["color"] != "wild":
-            break
-        deck.insert(0, top)
-        top = None
-
-    if top is None:
-        top = {"color": "red", "value": "0"}
-
-    session["deck"] = deck
-    session["hands"] = hands
-    session["discard"] = [top]
-    session["direction"] = 1
-    session["current_turn"] = 0
-    session["chosen_color"] = None
-    session["pending_draw"] = 0
-    session["draw_pending_uid"] = None
-
-    player_names = "\n".join([f"• {await get_nama(player_objs[uid])}" for uid in players])
-    await context.bot.send_message(
-        chat_id,
-        f"🃏 <b>UNO TARUHAN DIMULAI!</b>\n\n"
-        f"💰 Taruhan: <b>{format_rupiah(bet)}</b> per orang\n"
-        f"🏆 Total pot: <b>{format_rupiah(total_pot)}</b>\n\n"
-        f"👥 Pemain:\n{player_names}\n\n"
-        f"kartu sudah dibagikan!\n"
-        f"bot akan DM kartu kamu — cek DM!",
-        parse_mode="HTML"
-    )
-
-    # Kirim kartu ke setiap pemain
-    for uid in players:
-        await _send_hand(uid, chat_id, session, context)
-
-    # Tampilkan kartu pertama
-    await _announce_top_card(chat_id, session, context)
-    await _send_turn(chat_id, session, context)
-
-async def _send_hand(uid, chat_id, session, context):
-    hand = session["hands"][uid]
-    nama = await get_nama(session["player_objs"][uid])
-
-    if not hand:
-        try:
-            await context.bot.send_message(uid, f"🃏 kartu kamu: (kosong!)")
-        except Exception:
-            pass
-        return
-
-    labels = "\n".join([f"{i+1}. {card_label(c)}" for i, c in enumerate(hand)])
-    try:
-        hand_img = make_hand_image(hand)
-        await context.bot.send_photo(
-            uid,
-            photo=hand_img,
-            caption=f"🃏 <b>Kartu kamu:</b>\n\n{labels}",
-            parse_mode="HTML"
-        )
-    except Exception:
-        try:
-            await context.bot.send_message(
-                uid,
-                f"🃏 <b>Kartu kamu:</b>\n\n{labels}",
-                parse_mode="HTML"
-            )
-        except Exception:
-            pass
-
-async def _announce_top_card(chat_id, session, context):
-    top = session["discard"][-1]
-    chosen = session.get("chosen_color")
-    color_info = f" (warna dipilih: {COLOR_DISPLAY.get(chosen, chosen)})" if chosen and top["color"] == "wild" else ""
-    try:
-        top_img = make_card_image(top)
-        await context.bot.send_photo(
-            chat_id,
-            photo=top_img,
-            caption=f"🎴 <b>Kartu teratas:</b> {card_label(top)}{color_info}",
-            parse_mode="HTML"
-        )
-    except Exception:
-        await context.bot.send_message(
-            chat_id,
-            f"🎴 <b>Kartu teratas:</b> {card_label(top)}{color_info}",
-            parse_mode="HTML"
-        )
-
-async def _send_turn(chat_id, session, context):
-    players = session["players"]
-    if not players:
-        return
-    current_uid = players[session["current_turn"] % len(players)]
-    current_user = session["player_objs"][current_uid]
-    nama = await get_nama(current_user)
-
-    top = session["discard"][-1]
-    chosen = session.get("chosen_color")
-
-    hand = session["hands"].get(current_uid, [])
-    playable = playable_cards(hand, top, chosen)
-
-    keyboard = []
-    for i in playable:
-        c = hand[i]
-        keyboard.append([InlineKeyboardButton(f"▶ {card_label(c)}", callback_data=f"unoplay_{chat_id}_{i}")])
-
-    keyboard.append([InlineKeyboardButton("🃏 Ambil kartu", callback_data=f"unodraw_{chat_id}")])
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    hand_labels = "\n".join([f"{i+1}. {card_label(c)}" for i, c in enumerate(hand)])
-
-    try:
-        await context.bot.send_message(
-            current_uid,
-            f"🎲 <b>Giliran kamu!</b>\n\n"
-            f"🎴 Kartu teratas: {card_label(top)}"
-            + (f" (warna: {COLOR_DISPLAY.get(chosen,chosen)})" if chosen and top["color"] == "wild" else "")
-            + f"\n\n🃏 Kartumu:\n{hand_labels}\n\n"
-            f"pilih kartu yang mau dimainkan:",
-            reply_markup=reply_markup,
-            parse_mode="HTML"
-        )
-    except Exception:
-        pass
-
-    await context.bot.send_message(
-        chat_id,
-        f"🎲 giliran: <b>{nama}</b> ({len(hand)} kartu)",
-        parse_mode="HTML"
-    )
-
-async def _play_card_action(user_id, chat_id, card_idx, context, query):
-    if chat_id not in uno_sessions:
-        await query.edit_message_text("⚠️ sesi sudah tidak ada.")
-        return
-
-    session = uno_sessions[chat_id]
-    players = session["players"]
-    current_uid = players[session["current_turn"] % len(players)]
-
-    if user_id != current_uid:
-        await query.answer("bukan giliran kamu!", show_alert=True)
-        return
-
-    hand = session["hands"].get(user_id, [])
-    if card_idx >= len(hand):
-        await query.answer("kartu tidak valid!", show_alert=True)
-        return
-
-    card = hand[card_idx]
-    top = session["discard"][-1]
-    chosen = session.get("chosen_color")
-
-    if not can_play(card, top, chosen):
-        await query.answer("kartu ini tidak bisa dimainkan!", show_alert=True)
-        return
-
-    hand.pop(card_idx)
-    session["discard"].append(card)
-    session["chosen_color"] = None
-    nama = await get_nama(session["player_objs"][user_id])
-
-    await query.edit_message_text(
-        f"✅ kamu memainkan: <b>{card_label(card)}</b>",
-        parse_mode="HTML"
-    )
-    await context.bot.send_message(
-        chat_id,
-        f"🃏 <b>{nama}</b> memainkan: <b>{card_label(card)}</b>\n({len(hand)} kartu tersisa)",
-        parse_mode="HTML"
-    )
-
-    # Cek UNO
-    if len(hand) == 1:
-        await context.bot.send_message(chat_id, f"⚠️ <b>UNO!</b> {nama} tinggal 1 kartu!", parse_mode="HTML")
-
-    # Cek menang
-    if len(hand) == 0:
-        await _player_finished(user_id, chat_id, session, context)
-        return
-
-    # Apply card effect
-    await _apply_card_effect(card, user_id, chat_id, session, context)
-
-async def _apply_card_effect(card, player_uid, chat_id, session, context):
-    players = session["players"]
-    n = len(players)
-    direction = session["direction"]
-
-    if card["value"] == "Reverse":
-        session["direction"] *= -1
-        direction = session["direction"]
-        if n == 2:
-            # Reverse in 2-player acts like Skip
-            session["current_turn"] = (session["current_turn"] + direction * 2) % n
-        else:
-            session["current_turn"] = (session["current_turn"] + direction) % n
-        await context.bot.send_message(chat_id, "🔄 arah dibalik!")
-
-    elif card["value"] == "Skip":
-        session["current_turn"] = (session["current_turn"] + direction * 2) % n
-        skipped_uid = players[(session["current_turn"] - direction) % n]
-        skipped_nama = await get_nama(session["player_objs"][skipped_uid])
-        await context.bot.send_message(chat_id, f"🚫 giliran <b>{skipped_nama}</b> di-skip!", parse_mode="HTML")
-
-    elif card["value"] == "Draw Two":
-        next_idx = (session["current_turn"] + direction) % n
-        next_uid = players[next_idx]
-        drawn = _draw_from_deck(session, 2)
-        session["hands"][next_uid].extend(drawn)
-        next_nama = await get_nama(session["player_objs"][next_uid])
-        await context.bot.send_message(
-            chat_id,
-            f"➕ <b>{next_nama}</b> harus ambil 2 kartu dan skip!",
-            parse_mode="HTML"
-        )
-        await _send_hand(next_uid, chat_id, session, context)
-        session["current_turn"] = (session["current_turn"] + direction * 2) % n
-
-    elif card["value"] == "Wild":
-        await _ask_color(player_uid, chat_id, session, context)
-        return
-
-    elif card["value"] == "Wild Draw Four":
-        next_idx = (session["current_turn"] + direction) % n
-        next_uid = players[next_idx]
-        drawn = _draw_from_deck(session, 4)
-        session["hands"][next_uid].extend(drawn)
-        next_nama = await get_nama(session["player_objs"][next_uid])
-        await context.bot.send_message(
-            chat_id,
-            f"➕ <b>{next_nama}</b> harus ambil 4 kartu dan skip!",
-            parse_mode="HTML"
-        )
-        await _send_hand(next_uid, chat_id, session, context)
-        session["current_turn"] = (session["current_turn"] + direction) % n
-        await _ask_color(player_uid, chat_id, session, context)
-        return
-
-    else:
-        session["current_turn"] = (session["current_turn"] + direction) % n
-
-    # Skip players who have finished
-    _skip_finished_players(session)
-    await _announce_top_card(chat_id, session, context)
-    await _send_turn(chat_id, session, context)
-
-def _skip_finished_players(session):
-    players = session["players"]
-    direction = session["direction"]
-    n = len(players)
-    if n <= 1:
-        return
-    while session["hands"].get(players[session["current_turn"] % n]) is not None and \
-            len(session["hands"].get(players[session["current_turn"] % n], [None])) == 0:
-        session["current_turn"] = (session["current_turn"] + direction) % n
-
-def _draw_from_deck(session, count):
+def _draw_cards(session, n):
     drawn = []
-    for _ in range(count):
+    for _ in range(n):
         if not session["deck"]:
             if len(session["discard"]) > 1:
                 top = session["discard"].pop()
@@ -764,274 +99,545 @@ def _draw_from_deck(session, count):
             drawn.append(session["deck"].pop())
     return drawn
 
-async def _ask_color(player_uid, chat_id, session, context):
-    keyboard = [
-        [
-            InlineKeyboardButton("🔴 Merah", callback_data=f"unocolor_{chat_id}_red"),
-            InlineKeyboardButton("🟡 Kuning", callback_data=f"unocolor_{chat_id}_yellow"),
-        ],
-        [
-            InlineKeyboardButton("🟢 Hijau", callback_data=f"unocolor_{chat_id}_green"),
-            InlineKeyboardButton("🔵 Biru", callback_data=f"unocolor_{chat_id}_blue"),
-        ],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    try:
-        await context.bot.send_message(
-            player_uid,
-            "🌈 <b>pilih warna:</b>",
-            reply_markup=reply_markup,
-            parse_mode="HTML"
-        )
-    except Exception:
-        pass
+# ============================================================
+# SESSION STORAGE
+# ============================================================
+uno_sessions = {}
+uno_dm_pending = {}
 
-async def _choose_color_action(user_id, chat_id, chosen_color, context, query):
-    if chat_id not in uno_sessions:
-        await query.edit_message_text("⚠️ sesi sudah tidak ada.")
+# ============================================================
+# COMMANDS: /unotaruhan /joinuno /startuno /stopuno
+# ============================================================
+
+async def unotaruhan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cid = update.message.chat_id
+    if cid in uno_sessions:
+        await update.message.reply_text("🃏 sudah ada game UNO taruhan. /stopuno untuk hentikan.")
         return
-
-    session = uno_sessions[chat_id]
-    players = session["players"]
-    direction = session["direction"]
-    n = len(players)
-
-    # Verifikasi yang memilih adalah pemain yang main wild
-    # (bisa saja bukan current turn kalau WD4 dan current sudah advance)
-    session["chosen_color"] = chosen_color
-    color_label = {"red": "Merah 🔴", "yellow": "Kuning 🟡", "green": "Hijau 🟢", "blue": "Biru 🔵"}.get(chosen_color, chosen_color)
-
-    await query.edit_message_text(f"✅ kamu memilih warna: <b>{color_label}</b>", parse_mode="HTML")
-    await context.bot.send_message(
-        chat_id,
-        f"🌈 warna dipilih: <b>{color_label}</b>",
+    uno_sessions[cid] = {
+        "players": [], "objs": {}, "bets": {}, "bets_received": set(),
+        "hands": {}, "deck": [], "discard": [], "dir": 1, "turn_idx": 0,
+        "chosen_color": None, "started": False, "bet": None, "pot": 0,
+        "finish_order": [], "turn_msg_id": None,
+    }
+    await update.message.reply_text(
+        "🃏 <b>UNO TARUHAN!</b>\n\n"
+        "ketik /joinuno untuk ikut (min. 2, maks. 10)\n"
+        "setelah semua siap, host ketik /startuno",
         parse_mode="HTML"
     )
 
-    session["current_turn"] = (session["current_turn"] + direction) % n
-    _skip_finished_players(session)
-    await _announce_top_card(chat_id, session, context)
-    await _send_turn(chat_id, session, context)
-
-async def _draw_card_action(user_id, chat_id, context, query):
-    if chat_id not in uno_sessions:
-        await query.edit_message_text("⚠️ sesi sudah tidak ada.")
+async def joinuno(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cid = update.message.chat_id
+    user = update.message.from_user
+    if cid not in uno_sessions:
+        await update.message.reply_text("belum ada game UNO. ketik /unotaruhan dulu")
         return
-
-    session = uno_sessions[chat_id]
-    players = session["players"]
-    current_uid = players[session["current_turn"] % len(players)]
-
-    if user_id != current_uid:
-        await query.answer("bukan giliran kamu!", show_alert=True)
-        return
-
-    drawn = _draw_from_deck(session, 1)
-    nama = await get_nama(session["player_objs"][user_id])
-
-    if drawn:
-        session["hands"][user_id].extend(drawn)
-        card = drawn[0]
-        await query.edit_message_text(
-            f"🃏 kamu mengambil kartu: <b>{card_label(card)}</b>",
-            parse_mode="HTML"
-        )
-        await context.bot.send_message(
-            chat_id,
-            f"🃏 <b>{nama}</b> mengambil 1 kartu",
-            parse_mode="HTML"
-        )
-
-        top = session["discard"][-1]
-        chosen = session.get("chosen_color")
-
-        if can_play(card, top, chosen):
-            keyboard = [
-                [InlineKeyboardButton(f"▶ Mainkan {card_label(card)}", callback_data=f"unoplay_{chat_id}_{len(session['hands'][user_id])-1}")],
-                [InlineKeyboardButton("⏭ Pass (skip giliran)", callback_data=f"unopass_{chat_id}")],
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            try:
-                await context.bot.send_message(
-                    user_id,
-                    f"kartu yang kamu ambil bisa dimainkan!\n{card_label(card)}\n\nmainkan atau pass?",
-                    reply_markup=reply_markup
-                )
-            except Exception:
-                await _advance_turn(chat_id, session, context)
-        else:
-            await _advance_turn(chat_id, session, context)
-    else:
-        await query.edit_message_text("deck kosong dan tidak ada kartu untuk diambil!")
-        await _advance_turn(chat_id, session, context)
-
-async def _pass_turn_action(user_id, chat_id, context, query):
-    if chat_id not in uno_sessions:
-        await query.edit_message_text("⚠️ sesi sudah tidak ada.")
-        return
-
-    session = uno_sessions[chat_id]
-    players = session["players"]
-    current_uid = players[session["current_turn"] % len(players)]
-
-    if user_id != current_uid:
-        await query.answer("bukan giliran kamu!", show_alert=True)
-        return
-
-    await query.edit_message_text("⏭ kamu pass.")
-    nama = await get_nama(session["player_objs"][user_id])
-    await context.bot.send_message(chat_id, f"⏭ <b>{nama}</b> pass.", parse_mode="HTML")
-    await _advance_turn(chat_id, session, context)
-
-async def _advance_turn(chat_id, session, context):
-    direction = session["direction"]
-    players = session["players"]
-    n = len(players)
-    session["current_turn"] = (session["current_turn"] + direction) % n
-    _skip_finished_players(session)
-    await _announce_top_card(chat_id, session, context)
-    await _send_turn(chat_id, session, context)
-
-async def _player_finished(user_id, chat_id, session, context):
-    if session.get("finished"):
-        return
-
-    session["finish_order"].append(user_id)
-    players = session["players"]
-    nama = await get_nama(session["player_objs"][user_id])
-    rank = len(session["finish_order"])
-
-    await context.bot.send_message(
-        chat_id,
-        f"🎉 <b>{nama}</b> habis kartu! (peringkat #{rank})",
+    s = uno_sessions[cid]
+    if s["started"]:
+        await update.message.reply_text("game sudah mulai"); return
+    if user.id in s["objs"]:
+        await update.message.reply_text("kamu sudah join!"); return
+    if len(s["players"]) >= 10:
+        await update.message.reply_text("sudah penuh (maks. 10)"); return
+    s["players"].append(user.id)
+    s["objs"][user.id] = user
+    nama = await get_nama(user)
+    daftar = "\n".join([f"• {await get_nama(s['objs'][u])}" for u in s["players"]])
+    await update.message.reply_text(
+        f"✅ {nama} join!\n\n👥 <b>Pemain ({len(s['players'])}):</b>\n{daftar}",
         parse_mode="HTML"
     )
 
-    # Cek remaining players yang masih punya kartu
-    remaining = [uid for uid in players if uid not in session["finish_order"]]
-
-    if len(remaining) <= 1:
-        # Game selesai
-        if remaining:
-            session["finish_order"].append(remaining[0])
-        session["finished"] = True
-        await _end_uno_game(chat_id, session, context)
-        return
-
-    # Lanjutkan dengan player berikutnya
-    direction = session["direction"]
-    n = len(players)
-    session["current_turn"] = (session["current_turn"] + direction) % n
-    _skip_finished_players(session)
-    await _announce_top_card(chat_id, session, context)
-    await _send_turn(chat_id, session, context)
-
-async def _end_uno_game(chat_id, session, context):
-    finish_order = session["finish_order"]
-    player_objs = session["player_objs"]
-    bet = session["bet_amount"]
-    total_pot = session["total_pot"]
-    players = session["players"]
-
-    # Pastikan finish_order lengkap
-    for uid in players:
-        if uid not in finish_order:
-            finish_order.append(uid)
-
-    winner_uid = finish_order[0]
-    winner_user = player_objs[winner_uid]
-    winner_nama = await get_nama(winner_user)
-
-    # Transfer saldo: winner dapat total_pot (sudah dikurangi bet sendiri saat start)
-    # winner mendapat semua taruhan player lain
-    winnings = bet * (len(players) - 1)
-    winner_wallet = await db_get_wallet(winner_uid)
-    winner_saldo = (winner_wallet["saldo"] if winner_wallet else SLOT_INITIAL) + winnings
-    await db_set_wallet(winner_uid, get_raw_name(winner_user), winner_saldo)
-
-    # Skor
-    chat_id_score = chat_id
-    for rank, uid in enumerate(finish_order, 1):
-        user_obj = player_objs[uid]
-        if rank == 1:
-            await add_score(chat_id_score, user_obj, 500)
-        else:
-            await add_score(chat_id_score, user_obj, 100)
-
-    # Buat hasil
-    result_text = f"🏆 <b>GAME UNO TARUHAN SELESAI!</b>\n\n"
-    result_text += f"💰 Taruhan: {format_rupiah(bet)} per orang\n"
-    result_text += f"🎯 Total pot: {format_rupiah(total_pot)}\n\n"
-    result_text += f"🥇 <b>PEMENANG: {winner_nama}!</b>\n"
-    result_text += f"   +{format_rupiah(winnings)} saldo\n"
-    result_text += f"   +500 poin\n\n"
-    result_text += f"📊 <b>Urutan selesai:</b>\n"
-
-    for rank, uid in enumerate(finish_order, 1):
-        user_obj = player_objs[uid]
-        n = await get_nama(user_obj)
-        if rank == 1:
-            result_text += f"🥇 {n} — +{format_rupiah(winnings)} saldo, +500 poin\n"
-        elif rank == 2:
-            result_text += f"🥈 {n} — +100 poin\n"
-        elif rank == 3:
-            result_text += f"🥉 {n} — +100 poin\n"
-        else:
-            result_text += f"#{rank} {n} — +100 poin\n"
-
-    result_text += f"\n💳 saldo {winner_nama}: {format_rupiah(winner_saldo)}"
-
-    await context.bot.send_message(chat_id, result_text, parse_mode="HTML")
-
-    del uno_sessions[chat_id]
+async def startuno(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cid = update.message.chat_id
+    if cid not in uno_sessions:
+        await update.message.reply_text("belum ada game UNO"); return
+    s = uno_sessions[cid]
+    if s["started"]:
+        await update.message.reply_text("game sudah mulai"); return
+    if len(s["players"]) < 2:
+        await update.message.reply_text("minimal 2 pemain!"); return
+    s["started"] = True
+    await update.message.reply_text(
+        "💰 bot akan DM setiap pemain untuk memilih taruhan.\n"
+        "<b>semua pemain harus memilih jumlah yang sama!</b>",
+        parse_mode="HTML"
+    )
+    for uid in s["players"]:
+        uobj = s["objs"][uid]
+        nama = await get_nama(uobj)
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Rp 500.000", callback_data=f"unobet_{cid}_500000"),
+             InlineKeyboardButton("Rp 1.000.000", callback_data=f"unobet_{cid}_1000000")],
+            [InlineKeyboardButton("Rp 2.000.000", callback_data=f"unobet_{cid}_2000000"),
+             InlineKeyboardButton("Rp 3.000.000", callback_data=f"unobet_{cid}_3000000")],
+            [InlineKeyboardButton("Rp 7.000.000", callback_data=f"unobet_{cid}_7000000")],
+            [InlineKeyboardButton("✏️ Masukkan angka sendiri", callback_data=f"unobet_{cid}_custom")],
+        ])
+        try:
+            await context.bot.send_message(
+                uid,
+                f"🃏 <b>UNO TARUHAN</b> — halo {nama}!\n\npilih jumlah taruhan:\n"
+                "<i>semua pemain harus pilih jumlah yang sama!</i>",
+                reply_markup=kb, parse_mode="HTML"
+            )
+            uno_dm_pending[uid] = {"cid": cid, "stage": "bet"}
+        except Exception:
+            await context.bot.send_message(cid, f"⚠️ tidak bisa DM {nama}! pastikan sudah chat bot dulu.")
 
 async def stopuno(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.message.chat_id
-
-    if chat_id in uno_sessions:
-        session = uno_sessions[chat_id]
-        # Kembalikan saldo jika taruhan sudah dibayar
-        if session.get("bet_amount") is not None:
-            bet = session["bet_amount"]
-            player_objs = session["player_objs"]
-            for uid in session["players"]:
-                user_obj = player_objs[uid]
-                wallet = await db_get_wallet(uid)
-                saldo = (wallet["saldo"] if wallet else SLOT_INITIAL) + bet
-                await db_set_wallet(uid, get_raw_name(user_obj), saldo)
-
-            await update.message.reply_text(
-                f"game UNO dihentikan.\n"
-                f"taruhan {format_rupiah(bet)} dikembalikan ke semua pemain."
-            )
-        else:
-            await update.message.reply_text("game UNO dihentikan.")
-
-        for uid in list(uno_dm_pending.keys()):
-            if uno_dm_pending[uid].get("chat_id") == chat_id:
-                del uno_dm_pending[uid]
-
-        del uno_sessions[chat_id]
+    cid = update.message.chat_id
+    if cid not in uno_sessions:
+        await update.message.reply_text("tidak ada game UNO"); return
+    s = uno_sessions[cid]
+    if s.get("bet") is not None:
+        for uid in s["players"]:
+            w = await db_get_wallet(uid)
+            if w:
+                await db_set_wallet(uid, get_raw_name(s["objs"][uid]), w["saldo"] + s["bet"])
+        await update.message.reply_text(f"game UNO dihentikan. taruhan {format_rupiah(s['bet'])} dikembalikan.")
     else:
-        await update.message.reply_text("tidak ada game UNO yang berjalan")
+        await update.message.reply_text("game UNO dihentikan.")
+    for uid in list(uno_dm_pending):
+        if uno_dm_pending[uid].get("cid") == cid:
+            del uno_dm_pending[uid]
+    del uno_sessions[cid]
 
-async def proses_uno_dm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
+# ============================================================
+# CALLBACK: TARUHAN
+# ============================================================
 
-    if user_id not in uno_dm_pending:
+async def handle_uno_bet_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    uid = q.from_user.id
+    _, cid_str, val = q.data.split("_", 2)
+    cid = int(cid_str)
+
+    if uid not in uno_dm_pending or uno_dm_pending[uid].get("cid") != cid:
+        await q.edit_message_text("⚠️ sesi tidak ditemukan."); return
+    if cid not in uno_sessions:
+        uno_dm_pending.pop(uid, None)
+        await q.edit_message_text("⚠️ sesi UNO sudah tidak ada."); return
+
+    if val == "custom":
+        uno_dm_pending[uid]["stage"] = "bet_custom"
+        await q.edit_message_text(
+            "✏️ ketik jumlah taruhan (angka saja, contoh: <code>500000</code>)\n"
+            "<i>semua pemain harus sama!</i>", parse_mode="HTML"
+        )
         return
 
-    pending = uno_dm_pending[user_id]
-    stage = pending.get("stage")
-    chat_id = pending.get("chat_id")
+    await _record_bet(uid, q.from_user, cid, int(val), context, q)
 
-    if stage == "bet_custom":
-        text = update.message.text.strip().replace(".", "").replace(",", "")
-        if not text.isdigit():
-            await update.message.reply_text("tolong masukkan angka saja. contoh: 500000")
-            return
-        bet_amount = int(text)
-        if bet_amount <= 0:
-            await update.message.reply_text("❌ taruhan harus lebih dari 0!")
-            return
-        await _process_uno_bet(user_id, update.message.from_user, chat_id, bet_amount, context)
+async def _record_bet(uid, user, cid, amount, context, q=None):
+    if cid not in uno_sessions:
+        uno_dm_pending.pop(uid, None)
+        if q: await q.edit_message_text("⚠️ sesi UNO sudah tidak ada.")
+        return
+    s = uno_sessions[cid]
+    s["bets"][uid] = amount
+    s["bets_received"].add(uid)
+    uno_dm_pending.pop(uid, None)
+    msg = f"✅ taruhan <b>{format_rupiah(amount)}</b> tersimpan! menunggu pemain lain..."
+    if q:
+        await q.edit_message_text(msg, parse_mode="HTML")
+    else:
+        await context.bot.send_message(uid, msg, parse_mode="HTML")
+    if len(s["bets_received"]) == len(s["players"]):
+        await _validate_and_start(cid, context)
+
+async def _validate_and_start(cid, context):
+    s = uno_sessions[cid]
+    bets = [s["bets"][u] for u in s["players"]]
+    objs = s["objs"]
+
+    # Cek semua taruhan sama
+    if len(set(bets)) > 1:
+        detail = "\n".join([f"• {await get_nama(objs[u])}: {format_rupiah(s['bets'][u])}" for u in s["players"]])
+        del uno_sessions[cid]
+        await context.bot.send_message(cid,
+            f"❌ <b>TARUHAN TIDAK SAMA!</b>\n\n{detail}\n\ngame dibatalkan. coba lagi dengan /unotaruhan",
+            parse_mode="HTML"); return
+
+    bet = bets[0]
+    pot = bet * len(s["players"])
+
+    # Cek saldo
+    short = []
+    for uid in s["players"]:
+        await init_wallet(objs[uid])
+        w = await db_get_wallet(uid)
+        if (w["saldo"] if w else SLOT_INITIAL) < bet:
+            short.append(f"• {await get_nama(objs[uid])} (saldo: {format_rupiah(w['saldo'] if w else 0)})")
+    if short:
+        del uno_sessions[cid]
+        await context.bot.send_message(cid,
+            f"❌ <b>SALDO TIDAK CUKUP!</b>\n\ntaruhan: {format_rupiah(bet)}\n\n" + "\n".join(short) + "\n\ngame dibatalkan.",
+            parse_mode="HTML"); return
+
+    # Potong saldo
+    for uid in s["players"]:
+        w = await db_get_wallet(uid)
+        await db_set_wallet(uid, get_raw_name(objs[uid]), (w["saldo"] if w else SLOT_INITIAL) - bet)
+
+    s["bet"] = bet
+    s["pot"] = pot
+
+    # Deal kartu
+    deck = _new_deck()
+    hands = {uid: [] for uid in s["players"]}
+    for _ in range(7):
+        for uid in s["players"]:
+            if deck: hands[uid].append(deck.pop())
+
+    # Kartu pertama (bukan wild)
+    top = None
+    while deck:
+        top = deck.pop()
+        if top[0] != "x": break
+        deck.insert(0, top); top = None
+    if not top: top = ("r", "0")
+
+    s["deck"] = deck
+    s["hands"] = hands
+    s["discard"] = [top]
+    s["chosen_color"] = None
+    s["turn_idx"] = 0
+    s["dir"] = 1
+
+    names = "\n".join([f"• {await get_nama(objs[u])}" for u in s["players"]])
+    await context.bot.send_message(cid,
+        f"🃏 <b>UNO TARUHAN DIMULAI!</b>\n\n"
+        f"💰 Taruhan: <b>{format_rupiah(bet)}</b>/orang\n"
+        f"🏆 Total pot: <b>{format_rupiah(pot)}</b>\n\n"
+        f"👥 Pemain:\n{names}\n\n"
+        f"7 kartu sudah dibagikan!",
+        parse_mode="HTML"
+    )
+
+    # Kirim sticker kartu pertama
+    stk = _sticker(top)
+    if stk:
+        await context.bot.send_sticker(cid, stk)
+    await context.bot.send_message(cid, f"🎴 kartu awal: <b>{_label(top)}</b>", parse_mode="HTML")
+    await _send_turn(cid, s, context)
+
+# ============================================================
+# TURN MANAGEMENT
+# ============================================================
+
+async def _send_turn(cid, s, context):
+    players = s["players"]
+    if not players: return
+    uid = players[s["turn_idx"] % len(players)]
+    uobj = s["objs"][uid]
+    nama = await get_nama(uobj)
+    hand = s["hands"].get(uid, [])
+    top = s["discard"][-1]
+    chosen = s.get("chosen_color")
+    playable_idx = _playable(hand, top, chosen)
+
+    # Buat tombol kartu yang bisa dimainkan
+    rows = []
+    for i in playable_idx:
+        rows.append([InlineKeyboardButton(f"▶ {_label(hand[i])}", callback_data=f"unoplay_{cid}_{i}")])
+    rows.append([InlineKeyboardButton("🃏 Ambil kartu", callback_data=f"unodraw_{cid}")])
+
+    hand_txt = " | ".join([_label(c) for c in hand]) if hand else "(kosong)"
+    color_hint = f" (warna: {COLOR_LABEL.get(chosen,'?')})" if chosen and top[0]=="x" else ""
+
+    msg = await context.bot.send_message(
+        cid,
+        f"🎲 giliran: <b>{nama}</b> ({len(hand)} kartu)\n"
+        f"🎴 Kartu teratas: <b>{_label(top)}</b>{color_hint}\n\n"
+        f"<i>kartu {nama}:</i> {hand_txt}",
+        reply_markup=InlineKeyboardMarkup(rows),
+        parse_mode="HTML"
+    )
+    s["turn_msg_id"] = msg.message_id
+
+# ============================================================
+# CALLBACK: PLAY / DRAW / COLOR / PASS
+# ============================================================
+
+async def handle_uno_play_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    uid = q.from_user.id
+    data = q.data
+
+    if data.startswith("unoplay_"):
+        _, cid_s, idx_s = data.split("_")
+        await _action_play(uid, int(cid_s), int(idx_s), q, context)
+    elif data.startswith("unodraw_"):
+        cid = int(data.split("_")[1])
+        await _action_draw(uid, cid, q, context)
+    elif data.startswith("unocolor_"):
+        _, cid_s, color = data.split("_")
+        await _action_color(uid, int(cid_s), color, q, context)
+    elif data.startswith("unopass_"):
+        cid = int(data.split("_")[1])
+        await _action_pass(uid, cid, q, context)
+
+async def _action_play(uid, cid, idx, q, context):
+    await q.answer()
+    if cid not in uno_sessions:
+        await q.edit_message_text("⚠️ sesi sudah tidak ada."); return
+    s = uno_sessions[cid]
+    players = s["players"]
+    cur = players[s["turn_idx"] % len(players)]
+    if uid != cur:
+        await q.answer("bukan giliran kamu!", show_alert=True); return
+    hand = s["hands"].get(uid, [])
+    if idx >= len(hand):
+        await q.answer("kartu tidak valid!", show_alert=True); return
+    card = hand[idx]
+    top = s["discard"][-1]
+    if not _can_play(card, top, s.get("chosen_color")):
+        await q.answer("kartu ini tidak bisa dimainkan!", show_alert=True); return
+
+    hand.pop(idx)
+    s["discard"].append(card)
+    s["chosen_color"] = None
+    nama = await get_nama(s["objs"][uid])
+
+    await q.edit_message_reply_markup(None)
+
+    # Kirim sticker kartu yang dimainkan
+    stk = _sticker(card)
+    if stk:
+        try: await context.bot.send_sticker(cid, stk)
+        except Exception: pass
+
+    await context.bot.send_message(cid,
+        f"🃏 <b>{nama}</b> memainkan: <b>{_label(card)}</b> ({len(hand)} kartu tersisa)",
+        parse_mode="HTML"
+    )
+    if len(hand) == 1:
+        await context.bot.send_message(cid, f"⚠️ <b>UNO!</b> {nama} tinggal 1 kartu!", parse_mode="HTML")
+    if len(hand) == 0:
+        await _player_done(uid, cid, s, context); return
+
+    await _apply_effect(card, uid, cid, s, context)
+
+async def _apply_effect(card, uid, cid, s, context):
+    c, v = card
+    players = s["players"]
+    n = len(players)
+    d = s["dir"]
+    nxt = lambda: players[(s["turn_idx"] + d) % n]
+
+    if v == "reverse":
+        s["dir"] *= -1
+        d = s["dir"]
+        if n == 2:
+            s["turn_idx"] = (s["turn_idx"] + d * 2) % n
+        else:
+            s["turn_idx"] = (s["turn_idx"] + d) % n
+        await context.bot.send_message(cid, "🔄 arah dibalik!")
+
+    elif v == "skip":
+        skipped = nxt()
+        s_name = await get_nama(s["objs"][skipped])
+        s["turn_idx"] = (s["turn_idx"] + d * 2) % n
+        await context.bot.send_message(cid, f"🚫 giliran <b>{s_name}</b> di-skip!", parse_mode="HTML")
+
+    elif v == "draw":
+        next_uid = nxt()
+        drawn = _draw_cards(s, 2)
+        s["hands"][next_uid].extend(drawn)
+        nn = await get_nama(s["objs"][next_uid])
+        await context.bot.send_message(cid, f"➕ <b>{nn}</b> ambil 2 kartu dan skip!", parse_mode="HTML")
+        s["turn_idx"] = (s["turn_idx"] + d * 2) % n
+
+    elif v == "colorchooser":
+        await _ask_color(uid, cid, s, context); return
+
+    elif v == "draw_four":
+        next_uid = nxt()
+        drawn = _draw_cards(s, 4)
+        s["hands"][next_uid].extend(drawn)
+        nn = await get_nama(s["objs"][next_uid])
+        await context.bot.send_message(cid, f"➕ <b>{nn}</b> ambil 4 kartu dan skip!", parse_mode="HTML")
+        s["turn_idx"] = (s["turn_idx"] + d) % n
+        await _ask_color(uid, cid, s, context); return
+
+    else:
+        s["turn_idx"] = (s["turn_idx"] + d) % n
+
+    _skip_done_players(s)
+    await _send_turn(cid, s, context)
+
+def _skip_done_players(s):
+    players = s["players"]
+    n = len(players)
+    if n <= 1: return
+    visited = 0
+    while visited < n:
+        uid = players[s["turn_idx"] % n]
+        if uid not in s.get("finish_order", []):
+            break
+        s["turn_idx"] = (s["turn_idx"] + s["dir"]) % n
+        visited += 1
+
+async def _ask_color(uid, cid, s, context):
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔴 Merah", callback_data=f"unocolor_{cid}_r"),
+         InlineKeyboardButton("🟡 Kuning", callback_data=f"unocolor_{cid}_y")],
+        [InlineKeyboardButton("🟢 Hijau", callback_data=f"unocolor_{cid}_g"),
+         InlineKeyboardButton("🔵 Biru", callback_data=f"unocolor_{cid}_b")],
+    ])
+    nama = await get_nama(s["objs"][uid])
+    await context.bot.send_message(cid,
+        f"🌈 <b>{nama}</b>, pilih warna:", reply_markup=kb, parse_mode="HTML"
+    )
+
+async def _action_color(uid, cid, color, q, context):
+    await q.answer()
+    if cid not in uno_sessions:
+        await q.edit_message_text("⚠️ sesi sudah tidak ada."); return
+    s = uno_sessions[cid]
+    s["chosen_color"] = color
+    label = {"r":"Merah 🔴","g":"Hijau 🟢","b":"Biru 🔵","y":"Kuning 🟡"}.get(color, color)
+    await q.edit_message_text(f"🌈 warna dipilih: <b>{label}</b>", parse_mode="HTML")
+    s["turn_idx"] = (s["turn_idx"] + s["dir"]) % len(s["players"])
+    _skip_done_players(s)
+    await _send_turn(cid, s, context)
+
+async def _action_draw(uid, cid, q, context):
+    await q.answer()
+    if cid not in uno_sessions:
+        await q.edit_message_text("⚠️ sesi sudah tidak ada."); return
+    s = uno_sessions[cid]
+    players = s["players"]
+    cur = players[s["turn_idx"] % len(players)]
+    if uid != cur:
+        await q.answer("bukan giliran kamu!", show_alert=True); return
+    drawn = _draw_cards(s, 1)
+    nama = await get_nama(s["objs"][uid])
+    if not drawn:
+        await q.edit_message_reply_markup(None)
+        await context.bot.send_message(cid, f"🃏 <b>{nama}</b> tidak bisa ambil kartu (deck kosong)", parse_mode="HTML")
+        await _advance(cid, s, context); return
+
+    card = drawn[0]
+    s["hands"][uid].extend(drawn)
+    await q.edit_message_reply_markup(None)
+    await context.bot.send_message(cid, f"🃏 <b>{nama}</b> ambil 1 kartu", parse_mode="HTML")
+
+    top = s["discard"][-1]
+    if _can_play(card, top, s.get("chosen_color")):
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"▶ Mainkan {_label(card)}", callback_data=f"unoplay_{cid}_{len(s['hands'][uid])-1}")],
+            [InlineKeyboardButton("⏭ Pass", callback_data=f"unopass_{cid}")],
+        ])
+        await context.bot.send_message(cid,
+            f"kartu yang diambil <b>{nama}</b> bisa dimainkan!\n<b>{_label(card)}</b>\nmainkan atau pass?",
+            reply_markup=kb, parse_mode="HTML"
+        )
+    else:
+        await _advance(cid, s, context)
+
+async def _action_pass(uid, cid, q, context):
+    await q.answer()
+    if cid not in uno_sessions: return
+    s = uno_sessions[cid]
+    players = s["players"]
+    cur = players[s["turn_idx"] % len(players)]
+    if uid != cur:
+        await q.answer("bukan giliran kamu!", show_alert=True); return
+    await q.edit_message_reply_markup(None)
+    nama = await get_nama(s["objs"][uid])
+    await context.bot.send_message(cid, f"⏭ <b>{nama}</b> pass.", parse_mode="HTML")
+    await _advance(cid, s, context)
+
+async def _advance(cid, s, context):
+    s["turn_idx"] = (s["turn_idx"] + s["dir"]) % len(s["players"])
+    _skip_done_players(s)
+    top = s["discard"][-1]
+    stk = _sticker(top)
+    if stk:
+        try: await context.bot.send_sticker(cid, stk)
+        except Exception: pass
+    await _send_turn(cid, s, context)
+
+# ============================================================
+# PLAYER DONE / GAME OVER
+# ============================================================
+
+async def _player_done(uid, cid, s, context):
+    if uid in s["finish_order"]: return
+    s["finish_order"].append(uid)
+    nama = await get_nama(s["objs"][uid])
+    rank = len(s["finish_order"])
+    await context.bot.send_message(cid, f"🎉 <b>{nama}</b> habis kartu! (#{rank})", parse_mode="HTML")
+
+    remaining = [u for u in s["players"] if u not in s["finish_order"]]
+    if len(remaining) <= 1:
+        if remaining: s["finish_order"].append(remaining[0])
+        await _end_game(cid, s, context); return
+
+    s["turn_idx"] = (s["turn_idx"] + s["dir"]) % len(s["players"])
+    _skip_done_players(s)
+    top = s["discard"][-1]
+    stk = _sticker(top)
+    if stk:
+        try: await context.bot.send_sticker(cid, stk)
+        except Exception: pass
+    await _send_turn(cid, s, context)
+
+async def _end_game(cid, s, context):
+    order = s["finish_order"]
+    objs = s["objs"]
+    bet = s["bet"]
+    n = len(s["players"])
+
+    # Lengkapi urutan
+    for uid in s["players"]:
+        if uid not in order: order.append(uid)
+
+    winner = order[0]
+    winnings = bet * (n - 1)
+    w = await db_get_wallet(winner)
+    await db_set_wallet(winner, get_raw_name(objs[winner]), (w["saldo"] if w else SLOT_INITIAL) + winnings)
+
+    for rank, uid in enumerate(order, 1):
+        await add_score(cid, objs[uid], 500 if rank == 1 else 100)
+
+    lines = []
+    for rank, uid in enumerate(order, 1):
+        nama = await get_nama(objs[uid])
+        medal = {1:"🥇",2:"🥈",3:"🥉"}.get(rank, f"#{rank}")
+        extra = f" +{format_rupiah(winnings)} saldo, +500 poin" if rank == 1 else " +100 poin"
+        lines.append(f"{medal} {nama}{extra}")
+
+    w2 = await db_get_wallet(winner)
+    winner_nama = await get_nama(objs[winner])
+    await context.bot.send_message(cid,
+        f"🏆 <b>GAME UNO TARUHAN SELESAI!</b>\n\n"
+        f"💰 Taruhan: {format_rupiah(bet)}/orang | Pot: {format_rupiah(s['pot'])}\n\n"
+        + "\n".join(lines) +
+        f"\n\n💳 saldo {winner_nama}: {format_rupiah(w2['saldo'] if w2 else 0)}",
+        parse_mode="HTML"
+    )
+    del uno_sessions[cid]
+
+# ============================================================
+# DM HANDLER (untuk input angka custom taruhan)
+# ============================================================
+
+async def proses_uno_dm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.message.from_user.id
+    if uid not in uno_dm_pending: return
+    p = uno_dm_pending[uid]
+    if p.get("stage") != "bet_custom": return
+    cid = p["cid"]
+    text = update.message.text.strip().replace(".", "").replace(",", "")
+    if not text.isdigit():
+        await update.message.reply_text("tolong masukkan angka saja. contoh: 500000"); return
+    amount = int(text)
+    if amount <= 0:
+        await update.message.reply_text("❌ jumlah harus lebih dari 0!"); return
+    await _record_bet(uid, update.message.from_user, cid, amount, context)
+
