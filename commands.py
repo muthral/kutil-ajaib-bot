@@ -36,6 +36,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/apa [pertanyaan]\n"
         "/hitung [pertanyaan]\n"
         "/tagrandom — pilih satu member secara random\n"
+        "/tag2 — tag 2 member random\n"
+        "/jodoh — pasangkan 2 member random\n"
         "/tag7 — tag 7 member secara random\n\n"
         "🔢 <b>TEBAK ANGKA</b>\n"
         "/angka — solo, hanya kamu\n"
@@ -56,12 +58,11 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/tukar [jumlah] — tukar skor menjadi saldo\n\n"
         "💸 <b>TRANSFER</b>\n"
         "/transfer @username jumlah\n\n"
-        "🎰 <b>ANGKA TARUHAN</b>\n"
+        "🎰 <b>TARUHAN ANGKA & UNO</b>\n"
         "/angkataruhan — mulai game taruhan\n"
         "/jointaruhan — join game taruhan\n"
         "/starttaruhan — mulai game taruhan\n"
-        "/stoptaruhan — hentikan game taruhan\n\n"
-        "🃏 <b>UNO TARUHAN</b>\n"
+        "/stoptaruhan — hentikan game taruhan\n"
         "/unotaruhan — mulai game UNO dengan taruhan\n"
         "/joinuno — join game UNO\n"
         "/startuno — mulai game UNO (setelah semua join)\n"
@@ -73,10 +74,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/vote\n"
         "/pemain\n"
         "/stopspy\n"
-        "/skip\n\n"
-        "🏷 <b>LAINNYA</b>\n"
-        "/tag2 — tag 2 member random\n"
-        "/jodoh — pasangkan 2 member random",
+        "/skip\n\n",
         parse_mode="HTML"
     )
 
