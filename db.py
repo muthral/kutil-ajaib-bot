@@ -166,3 +166,4 @@ async def db_get_all_scores(chat_id: int) -> List[Dict[str, Any]]:
             chat_id
         )
         return [{"user_id": r["user_id"], "name": r["name"], "score": r["score"]} for r in rows]
+
