@@ -1,7 +1,8 @@
 import random
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
-    InlineQueryResultCachedSticker,
+    InlineQueryResultCachedSticker, InlineQueryResultArticle,
+    InputTextMessageContent,
 )
 from telegram.ext import ContextTypes
 
@@ -85,20 +86,6 @@ def _label(card):
     lbl = {"draw": "+2", "skip": "⊘", "reverse": "⇌", "colorchooser": "Wild", "draw_four": "Wild+4"}
     return f"{col} {lbl.get(v, v)}" if col else lbl.get(v, v)
 
-def _label_info(card, chosen_color=None):
-    c, v = card
-    name_map = {
-        "0": "0", "1": "1", "2": "2", "3": "3", "4": "4",
-        "5": "5", "6": "6", "7": "7", "8": "8", "9": "9",
-        "draw": "Draw Two", "skip": "Skip", "reverse": "Reverse",
-        "colorchooser": "Color Chooser", "draw_four": "Draw Four",
-    }
-    name = name_map.get(v, v)
-    if c == "x":
-        chosen_emoji = COLOR_EMOJI_INFO.get(chosen_color, "") if chosen_color else ""
-        return f"{chosen_emoji}⬛️{name}"
-    return f"{COLOR_EMOJI_INFO.get(c, '')}{name}"
-
 def _can_play(card, top, chosen_color=None):
     c, v = card
     tc, tv = top
@@ -107,9 +94,6 @@ def _can_play(card, top, chosen_color=None):
     if tc == "x":
         return c == chosen_color if chosen_color else True
     return c == tc or v == tv
-
-def _playable(hand, top, chosen_color=None):
-    return [i for i, card in enumerate(hand) if _can_play(card, top, chosen_color)]
 
 def _draw_cards(session, n):
     drawn = []
@@ -431,6 +415,7 @@ async def handle_uno_inline(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.inline_query
     uid = query.from_user.id
 
+    # Cari sesi UNO yang diikuti user
     cid = None
     for c, sess in uno_sessions.items():
         if uid in sess.get("hands", {}) and uid not in sess.get("eliminated", set()):
@@ -452,27 +437,50 @@ async def handle_uno_inline(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, card in enumerate(hand):
         stk = _sticker(card)
         if stk:
-            can = _can_play(card, top, chosen)
-            title = f"{'✅' if can else '❌'} {_label(card)}"
-            if current_uid != uid:
-                title = f"⏳ {title}"
-
+            # InlineQueryResultCachedSticker tidak punya parameter 'title'
             results.append(
                 InlineQueryResultCachedSticker(
                     id=f"card_{i}",
                     sticker_file_id=stk,
-                    title=title,
+                )
+            )
+        else:
+            # Fallback ke artikel teks jika sticker tidak ditemukan
+            can = _can_play(card, top, chosen)
+            label = _label(card)
+            prefix = "✅" if can else "❌"
+            if current_uid != uid:
+                prefix = "⏳"
+            results.append(
+                InlineQueryResultArticle(
+                    id=f"card_{i}",
+                    title=f"{prefix} {label}",
+                    input_message_content=InputTextMessageContent(
+                        message_text=f"🃏 Kartu: {label}"
+                    ),
                 )
             )
 
-    if not results:
-        await query.answer([], cache_time=0, is_personal=True)
-        return
+    # Tambahkan info permainan sebagai artikel
+    active = [p for p in s["players"] if p not in s.get("finish_order", []) and p not in s.get("eliminated", set())]
+    info_parts = []
+    for p in active:
+        pname = await get_nama(s["objs"][p])
+        info_parts.append(f"{pname} ({len(s['hands'][p])} kartu)")
+    info_text = f"🎴 Kartu teratas: {_label(top)}\n👥 Pemain: {', '.join(info_parts)}"
+    results.append(
+        InlineQueryResultArticle(
+            id="info",
+            title="ℹ️ Info Permainan",
+            input_message_content=InputTextMessageContent(message_text=info_text),
+        )
+    )
 
     try:
         await query.answer(results, cache_time=0, is_personal=True)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Inline query error: {e}")
+        await query.answer([], cache_time=0, is_personal=True)
 
 def _skip_done_players(s):
     players = s["players"]
