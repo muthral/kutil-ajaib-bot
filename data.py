@@ -157,3 +157,4 @@ async def get_wallet_dict():
 
 async def get_scores_dict(chat_id):
     return await db_get_scores(chat_id)
+
