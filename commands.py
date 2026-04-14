@@ -60,7 +60,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/unotaruhan — mulai game UNO dengan taruhan\n"
         "/joinuno — join game UNO\n"
         "/startuno — mulai game UNO (setelah semua join)\n"
-        "/stopuno — hentikan game UNO\n\n"
+        "/stopuno — batalkan game UNO (saldo dikembalikan)\n"
+        "/leave — keluar dari game UNO\n\n"
         "🎮 <b>GAME SPY</b>\n"
         "/spy\n/join\n/startspy\n/vote\n/pemain\n/stopspy\n/skip\n\n"
         "🏷 <b>LAINNYA</b>\n"
@@ -167,11 +168,9 @@ async def track_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type == "private":
         from game_spy import proses_spy_guess
         from game_tebak import proses_duel_dm, proses_taruhan_dm
-        from game_uno import proses_uno_dm
         await proses_spy_guess(update, context)
         await proses_duel_dm(update, context)
         await proses_taruhan_dm(update, context)
-        await proses_uno_dm(update, context)
         return
 
     chat_id = update.message.chat_id
@@ -182,10 +181,16 @@ async def track_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         recent_chatters[chat_id] = deque(maxlen=MAX_RECENT)
     recent_chatters[chat_id].append((time.time(), user))
 
+    if update.message.via_bot:
+        from game_uno import proses_uno_inline_draw
+        await proses_uno_inline_draw(update, context)
+        return
+
+    from game_uno import proses_uno_group_bet
+    await proses_uno_group_bet(update, context)
+
     from game_tebak import proses_tebakan_internal, proses_chaos_guess, proses_duel_guess, proses_taruhan_guess
     await proses_tebakan_internal(update, context)
     await proses_chaos_guess(update, context)
     await proses_duel_guess(update, context)
     await proses_taruhan_guess(update, context)
-
-
