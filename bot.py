@@ -17,8 +17,8 @@ from game_slot import slot, kekayaan
 from game_shop import shop, beli, tukar, transfer
 from game_uno import (
     unotaruhan, joinuno, startuno, stopuno, leaveuno,
-    handle_uno_bet_callback, handle_uno_inline, handle_uno_play_callback,
-    handle_uno_sticker_in_group, proses_uno_inline_draw,
+    handle_uno_bet_callback, handle_uno_play_callback,
+    handle_uno_inline, handle_uno_sticker_in_group,
 )
 from admin import setsaldo, addsaldo, setscore, addscore
 from db import close_pool
@@ -37,7 +37,6 @@ if __name__ == "__main__":
 
     app = ApplicationBuilder().token(TOKEN).concurrent_updates(True).build()
 
-    # Command handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("apa", apa))
@@ -82,17 +81,13 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("setscore", setscore))
     app.add_handler(CommandHandler("addscore", addscore))
 
-    # Callback handlers UNO
     app.add_handler(CallbackQueryHandler(handle_uno_bet_callback, pattern="^unobet_"))
     app.add_handler(CallbackQueryHandler(handle_uno_play_callback, pattern="^(unoplay_|unodraw_|unocolor_|unopass_)"))
 
-    # Inline query handler (UNTUK FITUR LIHAT KARTU)
     app.add_handler(InlineQueryHandler(handle_uno_inline))
 
-    # Sticker handler (untuk memainkan kartu via sticker dari inline)
     app.add_handler(MessageHandler(filters.Sticker.ALL, handle_uno_sticker_in_group))
 
-    # Message handler untuk tracking member dan proses game lainnya
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, track_member))
 
     print("Bot is running...")
