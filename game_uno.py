@@ -108,6 +108,13 @@ def _draw_cards(session, n):
             drawn.append(session["deck"].pop())
     return drawn
 
+def _get_active_players(s):
+    """Return list of player IDs who are still in the game."""
+    players = s["players"]
+    done = set(s.get("finish_order", []))
+    done.update(s.get("eliminated", set()))
+    return [uid for uid in players if uid not in done]
+
 uno_sessions = {}
 
 async def unotaruhan(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -225,19 +232,7 @@ async def leaveuno(update: Update, context: ContextTypes.DEFAULT_TYPE):
     s.setdefault("eliminated", set()).add(uid)
     await context.bot.send_message(cid, f"🚪 <b>{nama}</b> keluar dari permainan!", parse_mode="HTML")
 
-    remaining = [u for u in s["players"]
-                 if u not in s.get("finish_order", []) and u not in s.get("eliminated", set())]
-
-    if len(remaining) <= 1:
-        if remaining:
-            winner_uid = remaining[0]
-            if winner_uid not in s["finish_order"]:
-                s["finish_order"].insert(0, winner_uid)
-        await context.bot.send_message(cid, "🏁 <b>Permainan Selesai!</b>", parse_mode="HTML")
-        await _end_game(cid, s, context)
-        return
-
-    current_uid = s["players"][s["turn_idx"] % len(s["players"])]
+    # Jika pemain yang keluar sedang dalam proses memilih warna, pilihkan otomatis
     if s.get("color_pending") and s.get("color_pending_uid") == uid:
         s["color_pending"] = False
         s["color_pending_uid"] = None
@@ -246,10 +241,12 @@ async def leaveuno(update: Update, context: ContextTypes.DEFAULT_TYPE):
         label = {"r":"Merah 🔴","g":"Hijau 🟢","b":"Biru 🔵","y":"Kuning 🟡"}.get(auto_color, auto_color)
         await context.bot.send_message(cid, f"🌈 warna otomatis dipilih: <b>{label}</b>", parse_mode="HTML")
 
+    # Lanjutkan permainan
+    current_uid = _get_current_player(s)
     if current_uid == uid:
+        # Jika yang keluar adalah pemain yang sedang giliran, majukan
         s["turn_idx"] = (s["turn_idx"] + s["dir"]) % len(s["players"])
-        _skip_done_players(s)
-        await _send_turn(cid, s, context)
+    await _advance(cid, s, context)
 
 async def handle_uno_bet_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -377,10 +374,32 @@ async def _validate_and_start(cid, context):
     await context.bot.send_message(cid, f"🎴 kartu awal: <b>{_label(top)}</b>", parse_mode="HTML")
     await _send_turn(cid, s, context)
 
+def _get_current_player(s):
+    """Mengembalikan ID pemain yang seharusnya mendapat giliran sekarang (berdasarkan turn_idx)."""
+    active = _get_active_players(s)
+    if not active:
+        return None
+    idx = s["turn_idx"] % len(active)
+    return active[idx]
+
 async def _send_turn(cid, s, context):
-    players = s["players"]
-    if not players: return
-    uid = players[s["turn_idx"] % len(players)]
+    """Mengirim pesan giliran. Jika pemain tidak valid, maju ke pemain berikutnya."""
+    active = _get_active_players(s)
+    if not active:
+        # Seharusnya sudah ditangani di _player_done, tapi untuk aman:
+        await context.bot.send_message(cid, "Permainan berakhir.")
+        await _end_game(cid, s, context)
+        return
+
+    # Pastikan turn_idx dalam rentang
+    s["turn_idx"] = s["turn_idx"] % len(s["players"])
+    uid = _get_current_player(s)
+
+    # Jika uid tidak ada (misal karena baru keluar), panggil _advance
+    if uid is None:
+        await _advance(cid, s, context)
+        return
+
     uobj = s["objs"][uid]
     nama = await get_nama(uobj)
     hand = s["hands"].get(uid, [])
@@ -390,9 +409,7 @@ async def _send_turn(cid, s, context):
     color_hint = f"\n🌈 Warna: {COLOR_LABEL.get(chosen, '?')}" if chosen and top[0] == "x" else ""
 
     player_parts = []
-    for p in players:
-        if p in s.get("finish_order", []) or p in s.get("eliminated", set()):
-            continue
+    for p in active:
         pname = await get_nama(s["objs"][p])
         pcards = len(s["hands"].get(p, []))
         player_parts.append(f"{pname} ({pcards} kartu)")
@@ -429,44 +446,26 @@ async def handle_uno_inline(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hand = s["hands"].get(uid, [])
     top = s["discard"][-1]
     chosen = s.get("chosen_color")
-    current_uid = s["players"][s["turn_idx"] % len(s["players"])]
 
     results = []
-
     for i, card in enumerate(hand):
         stk = _sticker(card)
         if stk:
-            results.append(
-                InlineQueryResultCachedSticker(
-                    id=f"card_{i}",
-                    sticker_file_id=stk,
-                )
-            )
+            results.append(InlineQueryResultCachedSticker(id=f"card_{i}", sticker_file_id=stk))
         else:
             label = _label(card)
-            results.append(
-                InlineQueryResultArticle(
-                    id=f"card_{i}",
-                    title=label,
-                    input_message_content=InputTextMessageContent(
-                        message_text=f"🃏 Kartu: {label}"
-                    ),
-                )
-            )
+            results.append(InlineQueryResultArticle(
+                id=f"card_{i}", title=label,
+                input_message_content=InputTextMessageContent(message_text=f"🃏 Kartu: {label}")
+            ))
 
-    active = [p for p in s["players"] if p not in s.get("finish_order", []) and p not in s.get("eliminated", set())]
-    info_parts = []
-    for p in active:
-        pname = await get_nama(s["objs"][p])
-        info_parts.append(f"{pname} ({len(s['hands'][p])} kartu)")
+    active = _get_active_players(s)
+    info_parts = [f"{await get_nama(s['objs'][p])} ({len(s['hands'][p])} kartu)" for p in active]
     info_text = f"🎴 Kartu teratas: {_label(top)}\n👥 Pemain: {', '.join(info_parts)}"
-    results.append(
-        InlineQueryResultArticle(
-            id="info",
-            title="ℹ️ Info Permainan",
-            input_message_content=InputTextMessageContent(message_text=info_text),
-        )
-    )
+    results.append(InlineQueryResultArticle(
+        id="info", title="ℹ️ Info Permainan",
+        input_message_content=InputTextMessageContent(message_text=info_text)
+    ))
 
     try:
         await query.answer(results, cache_time=0, is_personal=True)
@@ -474,27 +473,9 @@ async def handle_uno_inline(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"Inline query error: {e}")
         await query.answer([], cache_time=0, is_personal=True)
 
-def _skip_done_players(s):
-    players = s["players"]
-    n = len(players)
-    if n <= 1: return
-    done = set(s.get("finish_order", []))
-    done.update(s.get("eliminated", set()))
-    visited = 0
-    while visited < n:
-        uid = players[s["turn_idx"] % n]
-        if uid not in done:
-            break
-        s["turn_idx"] = (s["turn_idx"] + s["dir"]) % n
-        visited += 1
-
 async def handle_uno_sticker_in_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
-    if not msg or not msg.sticker:
-        return
-    if not msg.via_bot:
-        return
-    if msg.via_bot.id != context.bot.id:
+    if not msg or not msg.sticker or not msg.via_bot or msg.via_bot.id != context.bot.id:
         return
     if msg.chat.type == "private":
         return
@@ -505,13 +486,10 @@ async def handle_uno_sticker_in_group(update: Update, context: ContextTypes.DEFA
     if cid not in uno_sessions:
         return
     s = uno_sessions[cid]
-    if uid not in s.get("hands", {}):
-        return
-    if uid in s.get("eliminated", set()):
+    if uid not in s.get("hands", {}) or uid in s.get("eliminated", set()):
         return
 
-    players = s["players"]
-    cur = players[s["turn_idx"] % len(players)]
+    cur = _get_current_player(s)
     if uid != cur:
         await msg.reply_text("⚠️ bukan giliran kamu!")
         return
@@ -580,10 +558,11 @@ async def _action_play(uid, cid, idx, q, context):
     if cid not in uno_sessions:
         await q.edit_message_text("⚠️ sesi sudah tidak ada."); return
     s = uno_sessions[cid]
-    players = s["players"]
-    cur = players[s["turn_idx"] % len(players)]
+
+    cur = _get_current_player(s)
     if uid != cur:
         await q.answer("bukan giliran kamu!", show_alert=True); return
+
     hand = s["hands"].get(uid, [])
     if idx >= len(hand):
         await q.answer("kartu tidak valid!", show_alert=True); return
@@ -619,52 +598,71 @@ async def _action_play(uid, cid, idx, q, context):
 async def _apply_effect(card, uid, cid, s, context):
     c, v = card
     players = s["players"]
-    n = len(players)
     d = s["dir"]
-    nxt = lambda: players[(s["turn_idx"] + d) % n]
+
+    # Helper untuk mendapatkan pemain berikutnya dalam urutan aktif
+    def next_player():
+        active = _get_active_players(s)
+        if not active:
+            return None
+        cur_idx = s["turn_idx"] % len(players)
+        cur_uid = players[cur_idx]
+        if cur_uid not in active:
+            # Temukan indeks di active list
+            for i, a in enumerate(active):
+                if a == cur_uid:
+                    return active[(i + d) % len(active)]
+            return active[0]
+        for i, a in enumerate(active):
+            if a == cur_uid:
+                return active[(i + d) % len(active)]
+        return active[0]
 
     if v == "reverse":
         s["dir"] *= -1
         d = s["dir"]
-        if n == 2:
-            s["turn_idx"] = (s["turn_idx"] + d * 2) % n
+        if len(players) == 2:
+            s["turn_idx"] = (s["turn_idx"] + d * 2) % len(players)
         else:
-            s["turn_idx"] = (s["turn_idx"] + d) % n
+            s["turn_idx"] = (s["turn_idx"] + d) % len(players)
         await context.bot.send_message(cid, "🔄 arah dibalik!")
 
     elif v == "skip":
-        skipped = nxt()
-        s_name = await get_nama(s["objs"][skipped])
-        s["turn_idx"] = (s["turn_idx"] + d * 2) % n
-        await context.bot.send_message(cid, f"🚫 giliran <b>{s_name}</b> di-skip!", parse_mode="HTML")
+        skipped = next_player()
+        if skipped:
+            s_name = await get_nama(s["objs"][skipped])
+            await context.bot.send_message(cid, f"🚫 giliran <b>{s_name}</b> di-skip!", parse_mode="HTML")
+        s["turn_idx"] = (s["turn_idx"] + d * 2) % len(players)
 
     elif v == "draw":
-        next_uid = nxt()
-        drawn = _draw_cards(s, 2)
-        s["hands"][next_uid].extend(drawn)
-        nn = await get_nama(s["objs"][next_uid])
-        await context.bot.send_message(cid, f"➕ <b>{nn}</b> ambil 2 kartu dan skip!", parse_mode="HTML")
-        s["turn_idx"] = (s["turn_idx"] + d * 2) % n
+        next_uid = next_player()
+        if next_uid:
+            drawn = _draw_cards(s, 2)
+            s["hands"][next_uid].extend(drawn)
+            nn = await get_nama(s["objs"][next_uid])
+            await context.bot.send_message(cid, f"➕ <b>{nn}</b> ambil 2 kartu dan skip!", parse_mode="HTML")
+        s["turn_idx"] = (s["turn_idx"] + d * 2) % len(players)
 
     elif v == "colorchooser":
         await _ask_color(uid, cid, s, context)
-        return  # Jangan advance sebelum warna dipilih
+        return  # Jangan lanjut dulu
 
     elif v == "draw_four":
-        next_uid = nxt()
-        drawn = _draw_cards(s, 4)
-        s["hands"][next_uid].extend(drawn)
-        nn = await get_nama(s["objs"][next_uid])
-        await context.bot.send_message(cid, f"➕ <b>{nn}</b> ambil 4 kartu dan skip!", parse_mode="HTML")
-        s["turn_idx"] = (s["turn_idx"] + d) % n
+        next_uid = next_player()
+        if next_uid:
+            drawn = _draw_cards(s, 4)
+            s["hands"][next_uid].extend(drawn)
+            nn = await get_nama(s["objs"][next_uid])
+            await context.bot.send_message(cid, f"➕ <b>{nn}</b> ambil 4 kartu dan skip!", parse_mode="HTML")
+        s["turn_idx"] = (s["turn_idx"] + d) % len(players)
         await _ask_color(uid, cid, s, context)
         return
 
-    else:
-        s["turn_idx"] = (s["turn_idx"] + d) % n
+    else:  # Kartu biasa
+        s["turn_idx"] = (s["turn_idx"] + d) % len(players)
 
-    _skip_done_players(s)
-    await _send_turn(cid, s, context)
+    # Setelah efek, pastikan giliran mengarah ke pemain aktif
+    await _advance(cid, s, context)
 
 async def _ask_color(uid, cid, s, context):
     s["color_pending"] = True
@@ -685,27 +683,29 @@ async def _action_color(uid, cid, color, q, context):
     if cid not in uno_sessions:
         await q.edit_message_text("⚠️ sesi sudah tidak ada."); return
     s = uno_sessions[cid]
-    # Validasi yang memilih warna adalah pemain yang seharusnya
-    if s.get("color_pending_uid") and s["color_pending_uid"] != uid:
+    if s.get("color_pending_uid") != uid:
         await q.answer("bukan kamu yang memilih warna!", show_alert=True); return
+
     s["chosen_color"] = color
     s["color_pending"] = False
     s["color_pending_uid"] = None
     label = {"r":"Merah 🔴","g":"Hijau 🟢","b":"Biru 🔵","y":"Kuning 🟡"}.get(color, color)
     await q.edit_message_text(f"🌈 warna dipilih: <b>{label}</b>", parse_mode="HTML")
+
+    # Maju giliran dan kirim
     s["turn_idx"] = (s["turn_idx"] + s["dir"]) % len(s["players"])
-    _skip_done_players(s)
-    await _send_turn(cid, s, context)
+    await _advance(cid, s, context)
 
 async def _action_draw(uid, cid, q, context):
     await q.answer()
     if cid not in uno_sessions:
         await q.edit_message_text("⚠️ sesi sudah tidak ada."); return
     s = uno_sessions[cid]
-    players = s["players"]
-    cur = players[s["turn_idx"] % len(players)]
+
+    cur = _get_current_player(s)
     if uid != cur:
         await q.answer("bukan giliran kamu!", show_alert=True); return
+
     drawn = _draw_cards(s, 1)
     nama = await get_nama(s["objs"][uid])
     if not drawn:
@@ -736,18 +736,41 @@ async def _action_pass(uid, cid, q, context):
     await q.answer()
     if cid not in uno_sessions: return
     s = uno_sessions[cid]
-    players = s["players"]
-    cur = players[s["turn_idx"] % len(players)]
+
+    cur = _get_current_player(s)
     if uid != cur:
         await q.answer("bukan giliran kamu!", show_alert=True); return
+
     await q.edit_message_reply_markup(None)
     nama = await get_nama(s["objs"][uid])
     await context.bot.send_message(cid, f"⏭ <b>{nama}</b> pass.", parse_mode="HTML")
     await _advance(cid, s, context)
 
 async def _advance(cid, s, context):
-    s["turn_idx"] = (s["turn_idx"] + s["dir"]) % len(s["players"])
-    _skip_done_players(s)
+    """Memajukan giliran ke pemain aktif berikutnya dan mengirim pesan giliran."""
+    # Pastikan turn_idx valid
+    s["turn_idx"] = s["turn_idx"] % len(s["players"])
+
+    # Jika pemain saat ini sudah tidak aktif, lompati
+    cur = _get_current_player(s)
+    if cur is None:
+        # Cari pemain berikutnya yang aktif
+        active = _get_active_players(s)
+        if not active:
+            await _end_game(cid, s, context)
+            return
+        # Set turn_idx ke pemain aktif pertama
+        for i, uid in enumerate(s["players"]):
+            if uid in active:
+                s["turn_idx"] = i
+                break
+    else:
+        # Pastikan turn_idx mengarah ke pemain yang benar di list asli
+        for i, uid in enumerate(s["players"]):
+            if uid == cur:
+                s["turn_idx"] = i
+                break
+
     await _send_turn(cid, s, context)
 
 async def _player_done(uid, cid, s, context):
@@ -757,16 +780,17 @@ async def _player_done(uid, cid, s, context):
     rank = len(s["finish_order"])
     await context.bot.send_message(cid, f"🎉 <b>{nama}</b> habis kartu! (#{rank})", parse_mode="HTML")
 
-    remaining = [u for u in s["players"]
-                 if u not in s["finish_order"] and u not in s.get("eliminated", set())]
-    if len(remaining) <= 1:
-        if remaining: s["finish_order"].append(remaining[0])
+    active = _get_active_players(s)
+    if len(active) <= 1:
+        if active:
+            winner = active[0]
+            if winner not in s["finish_order"]:
+                s["finish_order"].append(winner)
         await _end_game(cid, s, context)
         return
 
-    s["turn_idx"] = (s["turn_idx"] + s["dir"]) % len(s["players"])
-    _skip_done_players(s)
-    await _send_turn(cid, s, context)
+    # Maju giliran
+    await _advance(cid, s, context)
 
 async def _end_game(cid, s, context):
     order = list(s["finish_order"])
