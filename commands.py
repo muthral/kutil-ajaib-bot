@@ -61,6 +61,11 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/jointaruhan — join game taruhan\n"
         "/starttaruhan — mulai game taruhan\n"
         "/stoptaruhan — hentikan game taruhan\n\n"
+        "🃏 <b>UNO TARUHAN</b>\n"
+        "/unotaruhan — mulai game UNO dengan taruhan\n"
+        "/joinuno — join game UNO\n"
+        "/startuno — mulai game UNO (setelah semua join)\n"
+        "/stopuno — hentikan game UNO\n\n"
         "🎮 <b>GAME SPY</b>\n"
         "/spy\n"
         "/join\n"
@@ -246,9 +251,11 @@ async def track_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_type == "private":
         from game_spy import proses_spy_guess
         from game_tebak import proses_duel_dm, proses_taruhan_dm
+        from game_uno import proses_uno_dm
         await proses_spy_guess(update, context)
         await proses_duel_dm(update, context)
         await proses_taruhan_dm(update, context)
+        await proses_uno_dm(update, context)
         return
 
     chat_id = update.message.chat_id
