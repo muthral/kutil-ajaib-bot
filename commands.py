@@ -181,11 +181,6 @@ async def track_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         recent_chatters[chat_id] = deque(maxlen=MAX_RECENT)
     recent_chatters[chat_id].append((time.time(), user))
 
-    if update.message.via_bot:
-        from game_uno import proses_uno_inline_draw
-        await proses_uno_inline_draw(update, context)
-        return
-
     from game_uno import proses_uno_group_bet
     await proses_uno_group_bet(update, context)
 
